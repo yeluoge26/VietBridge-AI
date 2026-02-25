@@ -1,65 +1,80 @@
-import Image from "next/image";
+// ============================================================================
+// VietBridge AI V2 — Landing Page
+// Hero section + 4 feature cards + CTA buttons
+// ============================================================================
 
-export default function Home() {
+import Link from "next/link";
+
+const features = [
+  {
+    icon: "🌐",
+    title: "智能翻译",
+    description: "中越双语智能翻译，支持语境理解和专业术语",
+  },
+  {
+    icon: "💬",
+    title: "AI回复",
+    description: "根据场景生成多风格回复建议，轻松应对沟通",
+  },
+  {
+    icon: "🛡️",
+    title: "风险分析",
+    description: "智能识别沟通中的潜在风险，避免踩坑",
+  },
+  {
+    icon: "📖",
+    title: "越语教学",
+    description: "实战场景越南语学习，快速提升沟通能力",
+  },
+];
+
+export default function LandingPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6 py-16">
+      {/* Hero */}
+      <div className="mb-12 text-center">
+        <h1
+          className="mb-3 text-4xl font-bold tracking-tight text-[#111]"
+          style={{ fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}
+        >
+          VietBridge AI
+        </h1>
+        <p className="text-lg text-[#666]">在越南的智能沟通助手</p>
+      </div>
+
+      {/* Feature Cards */}
+      <div className="mb-12 grid w-full max-w-md grid-cols-2 gap-4">
+        {features.map((feature) => (
+          <div
+            key={feature.title}
+            className="flex flex-col items-start gap-2 rounded-2xl border border-[#EDEDED] bg-[#FAFAFA] p-5 transition-shadow hover:shadow-md"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <span className="text-2xl">{feature.icon}</span>
+            <h3 className="text-sm font-semibold text-[#111]">
+              {feature.title}
+            </h3>
+            <p className="text-xs leading-relaxed text-[#888]">
+              {feature.description}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* CTA Buttons */}
+      <div className="flex flex-col items-center gap-3 sm:flex-row">
+        <Link
+          href="/login"
+          className="flex h-12 w-48 items-center justify-center rounded-full bg-[#111] text-sm font-semibold text-white transition-colors hover:bg-[#333]"
+        >
+          开始使用
+        </Link>
+        <Link
+          href="/admin"
+          className="flex h-12 w-48 items-center justify-center rounded-full border border-[#DDD] bg-white text-sm font-semibold text-[#111] transition-colors hover:bg-[#F5F5F5]"
+        >
+          管理后台
+        </Link>
+      </div>
     </div>
   );
 }
