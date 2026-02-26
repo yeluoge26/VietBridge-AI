@@ -6,8 +6,7 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { getAuthUser } from "@/lib/auth-mobile";
 import { chatSchema } from "@/lib/validators/chat";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkUsageQuota, logUsage } from "@/lib/usage";
@@ -47,12 +46,12 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    // ── 1. Auth ────────────────────────────────────────────────────────────
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    // ── 1. Auth (supports both web session and mobile Bearer token) ─────
+    const authUser = await getAuthUser(req);
+    if (!authUser?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = authUser.id;
 
     // ── 2. Validate ────────────────────────────────────────────────────────
     const body = await req.json();
@@ -108,7 +107,7 @@ export async function POST(req: NextRequest) {
     const hasRAGHit = kbHits.length > 0;
 
     // ── 6. Model routing ───────────────────────────────────────────────────
-    const isPro = session.user.role === "pro" || session.user.role === "admin";
+    const isPro = authUser.role === "pro" || authUser.role === "admin";
     const model = selectModel({ task, scene, input, isPro });
 
     // ── 7. Build 7-layer prompt ────────────────────────────────────────────

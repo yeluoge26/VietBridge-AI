@@ -4,15 +4,14 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { getAuthUser } from "@/lib/auth-mobile";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = await getAuthUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
@@ -23,21 +22,21 @@ export async function POST(req: NextRequest) {
 
     // Get or create Stripe customer
     const subscription = await prisma.subscription.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: user.id },
     });
 
     let customerId = subscription?.stripeCustomerId;
 
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: session.user.email || undefined,
-        name: session.user.name || undefined,
-        metadata: { userId: session.user.id },
+        email: user.email || undefined,
+        name: user.name || undefined,
+        metadata: { userId: user.id },
       });
       customerId = customer.id;
 
       await prisma.subscription.update({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         data: { stripeCustomerId: customerId },
       });
     }
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/me?success=true`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/me?canceled=true`,
-      metadata: { userId: session.user.id },
+      metadata: { userId: user.id },
     });
 
     return NextResponse.json({ url: checkoutSession.url });

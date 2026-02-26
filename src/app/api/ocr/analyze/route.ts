@@ -4,8 +4,7 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { getAuthUser } from "@/lib/auth-mobile";
 import { ocrSchema } from "@/lib/validators/ocr";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { checkUsageQuota, logUsage } from "@/lib/usage";
@@ -16,8 +15,8 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = await getAuthUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
@@ -32,12 +31,12 @@ export async function POST(req: NextRequest) {
 
     const { ocrText, documentType } = parsed.data;
 
-    const rateResult = await checkRateLimit(session.user.id);
+    const rateResult = await checkRateLimit(user.id);
     if (!rateResult.success) {
       return NextResponse.json({ error: "请求太频繁" }, { status: 429 });
     }
 
-    const quota = await checkUsageQuota(session.user.id);
+    const quota = await checkUsageQuota(user.id);
     if (!quota.allowed) {
       return NextResponse.json({ error: "今日额度已用完", upgrade: true }, { status: 403 });
     }
@@ -55,7 +54,7 @@ For menus: compare prices to Da Nang averages.
 For receipts: check for hidden charges.
 For contracts: identify risky clauses.`;
 
-    const isPro = session.user.role === "pro" || session.user.role === "admin";
+    const isPro = user.role === "pro" || user.role === "admin";
     const client = getClient(isPro ? "openai" : "qwen");
     const modelName = isPro ? "gpt-4o" : "qwen-plus";
 
@@ -76,7 +75,7 @@ For contracts: identify risky clauses.`;
     const cost = (tokensPrompt + tokensCompletion) * (isPro ? 0.000005 : 0.000001);
 
     await logUsage({
-      userId: session.user.id,
+      userId: user.id,
       taskType: "SCAN",
       sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
       modelUsed: modelName,

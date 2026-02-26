@@ -4,14 +4,13 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { getAuthUser } from "@/lib/auth-mobile";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = await getAuthUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
@@ -22,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     const [conversations, total] = await Promise.all([
       prisma.conversation.findMany({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
         orderBy: { updatedAt: "desc" },
         skip,
         take: limit,
@@ -31,7 +30,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.conversation.count({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
       }),
     ]);
 

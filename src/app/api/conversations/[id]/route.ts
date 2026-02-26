@@ -5,17 +5,16 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { getAuthUser } from "@/lib/auth-mobile";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = await getAuthUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
@@ -24,7 +23,7 @@ export async function GET(
     const conversation = await prisma.conversation.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId: user.id,
       },
       include: {
         messages: {
@@ -48,12 +47,12 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = await getAuthUser(req);
+    if (!user?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
@@ -63,7 +62,7 @@ export async function DELETE(
     const conversation = await prisma.conversation.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId: user.id,
       },
     });
 
