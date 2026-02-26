@@ -58,8 +58,9 @@ h5/android/app/build/
 h5/android/build/
 h5/android/local.properties
 
-# TTS audio cache
-/storage/
+# TTS — keep generated MP3s, ignore temp/test files
+/storage/tts/_test*.mp3
+/storage/tts/*.mp3
 
 # iOS
 ios/VietBridge.xcodeproj/xcuserdata/
