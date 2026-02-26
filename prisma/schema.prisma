@@ -55,6 +55,7 @@ model User {
   role           String    @default("user")
   totalCalls     Int       @default(0)
   userLevel      Int       @default(1)
+  banned         Boolean   @default(false)
   createdAt      DateTime  @default(now())
 
   accounts      Account[]
@@ -318,10 +319,12 @@ model ModelRoute {
   sceneType     SceneType @default(GENERAL)
   primaryModel  String
   fallbackModel String?
+  apiBase       String    @default("")   // Custom API base URL (empty = use default)
+  apiKeyEnv     String    @default("")   // Env var name for API key (empty = use default)
   maxCost       Float
   maxLatency    Int       // milliseconds
   active        Boolean   @default(true)
-  userLevel     Int       @default(0)  // 0=all levels, 1-6=specific level
+  userLevel     Int       @default(0)    // 0=all levels, 1-6=specific level
 
   @@index([taskType, sceneType])
   @@index([active])
@@ -417,12 +420,12 @@ model TtsModel {
   id          String   @id @default(cuid())
   name        String   @unique            // 唯一标识: cosyvoice-v1, edge-tts, etc.
   displayName String   @default("")       // 显示名: CosyVoice, Edge TTS
-  provider    String   @default("dashscope") // dashscope, edge, openai
-  apiModel    String   @default("cosyvoice-v1") // API 模型名
+  provider    String   @default("nls")     // nls, dashscope, edge, openai
+  apiModel    String   @default("")       // API 模型名
   apiEndpoint String   @default("")       // 自定义端点 (空=使用默认)
-  apiKeyEnv   String   @default("DASHSCOPE_API_KEY") // 环境变量名
-  voiceZh     String   @default("longxiaochun")
-  voiceVi     String   @default("longxiaochun")
+  apiKeyEnv   String   @default("NLS_APPKEY") // 环境变量名
+  voiceZh     String   @default("xiaoyun")
+  voiceVi     String   @default("Tien")   // 越南语女声
   speed       Float    @default(1.0)
   isDefault   Boolean  @default(false)    // 是否为默认 TTS
   active      Boolean  @default(true)

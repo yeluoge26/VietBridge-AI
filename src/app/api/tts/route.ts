@@ -216,8 +216,8 @@ export async function POST(req: NextRequest) {
     const provider = ttsModel?.provider ?? "nls";
     const voice =
       lang === "zh"
-        ? (ttsModel?.voiceZh ?? "longxiaochun")
-        : (ttsModel?.voiceVi ?? "longxiaochun");
+        ? (ttsModel?.voiceZh ?? "xiaoyun")
+        : (ttsModel?.voiceVi ?? "Tien");
 
     const trimmedText = text.trim();
 

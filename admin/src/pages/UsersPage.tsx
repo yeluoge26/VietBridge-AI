@@ -11,6 +11,7 @@ interface UserRecord {
   totalCalls: number;
   plan: string;
   usageCount: number;
+  banned: boolean;
   createdAt: string;
 }
 
@@ -136,6 +137,24 @@ export default function UsersPage() {
     } catch (err) { toast(err instanceof Error ? err.message : "删除失败"); }
   };
 
+  /* ── Ban/Unban ── */
+  const toggleBan = async (u: UserRecord) => {
+    const newBanned = !u.banned;
+    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, banned: newBanned } : x)));
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: u.id, banned: newBanned }),
+      });
+      if (!res.ok) throw new Error();
+      toast(newBanned ? "用户已封禁" : "用户已解封");
+    } catch {
+      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, banned: u.banned } : x)));
+      toast("操作失败");
+    }
+  };
+
   /* ── Pagination ── */
   const goToPage = (p: number) => { if (p >= 1 && p <= pagination.totalPages) fetchUsers(p); };
 
@@ -196,7 +215,7 @@ export default function UsersPage() {
             <table className="w-full" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr className="border-b border-[#2A2A35]">
-                  {["用户名", "邮箱", "角色", "等级", "套餐", "调用数", "注册时间", "操作"].map((h) => (
+                  {["用户名", "邮箱", "角色", "等级", "套餐", "调用数", "状态", "注册时间", "操作"].map((h) => (
                     <th key={h} className="px-3 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -218,10 +237,18 @@ export default function UsersPage() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ color: pc.color, backgroundColor: pc.bg }}>{u.plan}</span>
                       </td>
                       <td className="px-3 py-3 text-[12px] text-[#8B8B99]">{u.usageCount}</td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${u.banned ? "text-[#EF4444] bg-[#EF444420]" : "text-[#22C55E] bg-[#22C55E20]"}`}>
+                          {u.banned ? "已封禁" : "正常"}
+                        </span>
+                      </td>
                       <td className="px-3 py-3 text-[12px] text-[#55556A]">{fmtDate(u.createdAt)}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           <button onClick={() => openEdit(u)} className="px-2 py-1 rounded text-[10px] font-medium text-[#3B82F6] bg-[#3B82F620] hover:bg-[#3B82F630] transition-colors cursor-pointer">编辑</button>
+                          <button onClick={() => toggleBan(u)} className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${u.banned ? "text-[#22C55E] bg-[#22C55E20] hover:bg-[#22C55E30]" : "text-[#FBBF24] bg-[#FBBF2420] hover:bg-[#FBBF2430]"}`}>
+                            {u.banned ? "解封" : "封禁"}
+                          </button>
                           <button onClick={() => setDeleteId(u.id)} className="px-2 py-1 rounded text-[10px] font-medium text-[#EF4444] bg-[#EF444420] hover:bg-[#EF444430] transition-colors cursor-pointer">删除</button>
                         </div>
                       </td>

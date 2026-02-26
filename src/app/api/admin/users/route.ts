@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
           role: true,
           userLevel: true,
           totalCalls: true,
+          banned: true,
           createdAt: true,
           subscription: { select: { plan: true, currentPeriodEnd: true } },
           _count: { select: { usageLogs: true } },
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
         ...u,
         plan: u.subscription?.plan ?? "FREE",
         usageCount: u._count.usageLogs,
+        banned: u.banned ?? false,
         _count: undefined,
         subscription: undefined,
       })),
@@ -112,7 +114,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, name, email, password, role, userLevel } = body;
+    const { id, name, email, password, role, userLevel, banned } = body;
 
     if (!id) return NextResponse.json({ error: "缺少用户ID" }, { status: 400 });
 
@@ -121,6 +123,7 @@ export async function PUT(req: NextRequest) {
     if (email !== undefined) data.email = email;
     if (role !== undefined) data.role = role;
     if (userLevel !== undefined) data.userLevel = userLevel;
+    if (banned !== undefined) data.banned = banned;
     if (password) data.hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await prisma.user.update({

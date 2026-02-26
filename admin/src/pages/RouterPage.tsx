@@ -8,6 +8,8 @@ interface RouteRecord {
   sceneType: string;
   primaryModel: string;
   fallbackModel: string | null;
+  apiBase: string;
+  apiKeyEnv: string;
   maxCost: number;
   maxLatency: number;
   active: boolean;
@@ -19,6 +21,8 @@ interface RouteForm {
   sceneType: string;
   primaryModel: string;
   fallbackModel: string;
+  apiBase: string;
+  apiKeyEnv: string;
   maxCost: string;
   maxLatency: string;
   active: boolean;
@@ -78,6 +82,8 @@ const emptyForm: RouteForm = {
   sceneType: "GENERAL",
   primaryModel: "qwen-plus",
   fallbackModel: "gpt-4o",
+  apiBase: "",
+  apiKeyEnv: "",
   maxCost: "0.01",
   maxLatency: "5000",
   active: true,
@@ -136,6 +142,8 @@ export default function RouterPage() {
       sceneType: r.sceneType,
       primaryModel: r.primaryModel,
       fallbackModel: r.fallbackModel ?? "",
+      apiBase: r.apiBase || "",
+      apiKeyEnv: r.apiKeyEnv || "",
       maxCost: String(r.maxCost),
       maxLatency: String(r.maxLatency),
       active: r.active,
@@ -154,6 +162,8 @@ export default function RouterPage() {
         sceneType: form.sceneType,
         primaryModel: form.primaryModel,
         fallbackModel: form.fallbackModel || null,
+        apiBase: form.apiBase || "",
+        apiKeyEnv: form.apiKeyEnv || "",
         maxCost: parseFloat(form.maxCost) || 0.01,
         maxLatency: parseInt(form.maxLatency) || 5000,
         active: form.active,
@@ -256,7 +266,7 @@ export default function RouterPage() {
             <table className="w-full" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr className="border-b border-[#2A2A35]">
-                  {["任务", "场景", "等级", "主模型", "备选模型", "成本上限", "延迟上限", "状态", "操作"].map((h) => (
+                  {["任务", "场景", "等级", "主模型", "备选模型", "API端点", "成本上限", "延迟上限", "状态", "操作"].map((h) => (
                     <th key={h} className="px-3 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider">
                       {h}
                     </th>
@@ -280,6 +290,7 @@ export default function RouterPage() {
                       <td className="px-3 py-3 text-[12px] text-[#8B8B99]">{r.userLevel === 0 ? "全部" : `Lv${r.userLevel}`}</td>
                       <td className="px-3 py-3 text-[12px] text-[#EAEAEF] font-mono">{r.primaryModel}</td>
                       <td className="px-3 py-3 text-[12px] text-[#8B8B99] font-mono">{r.fallbackModel || "—"}</td>
+                      <td className="px-3 py-3 text-[11px] text-[#55556A] max-w-[120px] truncate" title={r.apiBase || "默认"}>{r.apiBase || "默认"}</td>
                       <td className="px-3 py-3 text-[12px] text-[#FBBF24]">{formatCost(r.maxCost)}</td>
                       <td className="px-3 py-3 text-[12px] text-[#8B8B99]">{formatLatency(r.maxLatency)}</td>
                       <td className="px-3 py-3">
@@ -377,6 +388,18 @@ export default function RouterPage() {
                 <div>
                   <label className={labelCls}>备选模型</label>
                   <input value={form.fallbackModel} onChange={(e) => setForm({ ...form, fallbackModel: e.target.value })} className={inputCls} placeholder="例: gpt-4o" />
+                </div>
+              </div>
+
+              {/* API Base + API Key Env */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>API Base URL</label>
+                  <input value={form.apiBase} onChange={(e) => setForm({ ...form, apiBase: e.target.value })} className={inputCls} placeholder="留空使用默认端点" />
+                </div>
+                <div>
+                  <label className={labelCls}>API Key 环境变量</label>
+                  <input value={form.apiKeyEnv} onChange={(e) => setForm({ ...form, apiKeyEnv: e.target.value })} className={inputCls} placeholder="例: OPENAI_API_KEY" />
                 </div>
               </div>
 

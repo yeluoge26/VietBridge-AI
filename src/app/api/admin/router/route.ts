@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
       sceneType: body.sceneType,
       primaryModel: body.primaryModel,
       fallbackModel: body.fallbackModel,
+      apiBase: body.apiBase,
+      apiKeyEnv: body.apiKeyEnv,
       maxCost: body.maxCost,
       maxLatency: body.maxLatency,
       active: body.active,
@@ -67,6 +69,8 @@ export async function PUT(req: NextRequest) {
     data: {
       primaryModel: body.primaryModel,
       fallbackModel: body.fallbackModel,
+      apiBase: body.apiBase,
+      apiKeyEnv: body.apiKeyEnv,
       maxCost: body.maxCost,
       maxLatency: body.maxLatency,
       active: body.active,
