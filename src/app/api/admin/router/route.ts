@@ -75,3 +75,14 @@ export async function PUT(req: NextRequest) {
   });
   return NextResponse.json(route);
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
+
+  const { id } = await req.json();
+  if (!id) return NextResponse.json({ error: "缺少 id" }, { status: 400 });
+
+  await prisma.modelRoute.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
+}
