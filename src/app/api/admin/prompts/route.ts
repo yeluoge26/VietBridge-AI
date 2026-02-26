@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const raw = await req.json();
   const parsed = createPromptSchema.safeParse(raw);
   if (!parsed.success) {
-    return NextResponse.json({ error: "参数错误", details: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "参数错误", details: parsed.error.issues.map((i) => i.message) }, { status: 400 });
   }
   const body = parsed.data;
 
@@ -58,7 +58,7 @@ export async function PUT(req: NextRequest) {
   const raw = await req.json();
   const parsed = updatePromptSchema.safeParse(raw);
   if (!parsed.success) {
-    return NextResponse.json({ error: "参数错误", details: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "参数错误", details: parsed.error.issues.map((i) => i.message) }, { status: 400 });
   }
   const body = parsed.data;
 

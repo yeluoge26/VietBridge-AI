@@ -23,7 +23,16 @@ export const chatSchema = z.object({
     .optional(),
   tone: z.number().min(0).max(100).optional().default(50),
   langDir: z.enum(["zh2vi", "vi2zh"]).optional().default("zh2vi"),
-  conversationHistory: z.array(z.any()).optional().default([]),
+  conversationHistory: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(5000),
+      })
+    )
+    .max(50)
+    .optional()
+    .default([]),
   conversationId: z.string().optional(),
   stream: z.boolean().optional().default(false),
 });

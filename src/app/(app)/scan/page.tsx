@@ -24,11 +24,14 @@ export default function ScanPage() {
   const [ocrText, setOcrText] = useState("");
   const [ocrProgress, setOcrProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageUrlRef = useRef<string | null>(null);
   const { result, loading, error, analyze, reset } = useOcr();
 
   // ── Handle image selection ─────────────────────────────────────────────
   const handleImageSelect = useCallback(async (file: File) => {
+    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
     const url = URL.createObjectURL(file);
+    imageUrlRef.current = url;
     setImageUrl(url);
     setStep("ocr");
     setOcrProgress(0);
@@ -66,6 +69,8 @@ export default function ScanPage() {
 
   // ── Reset ──────────────────────────────────────────────────────────────
   function handleReset() {
+    if (imageUrlRef.current) URL.revokeObjectURL(imageUrlRef.current);
+    imageUrlRef.current = null;
     setStep("upload");
     setImageUrl(null);
     setOcrText("");

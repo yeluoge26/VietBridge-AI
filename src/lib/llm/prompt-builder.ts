@@ -47,6 +47,7 @@ export interface BuildPromptParams {
   input: string;
   conversationHistory: Message[];
   kbHits?: KBHit[];
+  promptOverride?: string;
 }
 
 export interface BuildPromptResult {
@@ -134,7 +135,7 @@ function getTaskPrompt(task: TaskId): string {
 // ---------------------------------------------------------------------------
 
 export function buildPrompt(params: BuildPromptParams): BuildPromptResult {
-  const { task, scene, tone, memory, input, conversationHistory, kbHits } = params;
+  const { task, scene, tone, memory, input, conversationHistory, kbHits, promptOverride } = params;
 
   const sceneRule = SCENE_RULES[scene];
   const sceneInfo = SCENES.find((s) => s.id === scene);
@@ -162,9 +163,12 @@ export function buildPrompt(params: BuildPromptParams): BuildPromptResult {
   };
 
   // Layer 3: Task - Task-specific instructions
+  const taskContent = promptOverride
+    ? `${getTaskPrompt(task)}\n\n--- 管理员自定义指令 ---\n${promptOverride}`
+    : getTaskPrompt(task);
   const taskLayer: Layer = {
     label: "任务层",
-    content: getTaskPrompt(task),
+    content: taskContent,
   };
 
   // Layer 4: Scene - Scene-specific rules and grammar

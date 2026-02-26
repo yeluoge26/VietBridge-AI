@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {};
+  const where: any = { deleted: false };
   if (task) where.taskType = task;
   if (model) where.modelUsed = model;
   if (status) where.status = status;

@@ -1,25 +1,53 @@
 // ============================================================================
 // VietBridge AI V2 — OCR Document Analysis API
 // Analyzes OCR-extracted text from menus, receipts, contracts
+// Features: Dual auth (Session + API Key), rate limit, cost limit, caching
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth-mobile";
 import { ocrSchema } from "@/lib/validators/ocr";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, checkApiKeyRateLimit } from "@/lib/rate-limit";
 import { checkUsageQuota, logUsage } from "@/lib/usage";
-import { getClient } from "@/lib/llm/client";
+import { authenticateApiKey } from "@/lib/api-key-auth";
+import { checkMonthlyCostLimit, checkGlobalCostLimit } from "@/lib/cost-limit";
+import { getOcrCache, setOcrCache, type CachedOcrResult } from "@/lib/ocr-cache";
 import { estimateTokens } from "@/lib/token-estimator";
+import { callLLM } from "@/lib/llm/llm-call";
+import { lookupModelRoute } from "@/lib/llm/route-lookup";
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const user = await getAuthUser(req);
-    if (!user?.id) {
-      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    // ── 1. Auth (API Key, Mobile Bearer, or Session) ─────────────────
+    let userId: string;
+    let userRole: string;
+    let apiKeyId: string | undefined;
+    let apiKeyPrefix: string | undefined;
+
+    const apiKeyAuth = await authenticateApiKey(req);
+    if (apiKeyAuth) {
+      if (!apiKeyAuth.authenticated) {
+        return NextResponse.json(
+          { error: apiKeyAuth.error },
+          { status: 401 }
+        );
+      }
+      userId = apiKeyAuth.userId!;
+      userRole = apiKeyAuth.userRole!;
+      apiKeyId = apiKeyAuth.apiKeyId;
+      apiKeyPrefix = apiKeyAuth.apiKeyPrefix;
+    } else {
+      const authUser = await getAuthUser(req);
+      if (!authUser?.id) {
+        return NextResponse.json({ error: "未登录" }, { status: 401 });
+      }
+      userId = authUser.id;
+      userRole = authUser.role;
     }
 
+    // ── 2. Validate ───────────────────────────────────────────────────
     const body = await req.json();
     const parsed = ocrSchema.safeParse(body);
     if (!parsed.success) {
@@ -31,17 +59,90 @@ export async function POST(req: NextRequest) {
 
     const { ocrText, documentType } = parsed.data;
 
-    const rateResult = await checkRateLimit(user.id);
-    if (!rateResult.success) {
-      return NextResponse.json({ error: "请求太频繁" }, { status: 429 });
+    // ── 3. Rate limit (API Key vs Session) ────────────────────────────
+    if (apiKeyId && apiKeyPrefix) {
+      const rateResult = await checkApiKeyRateLimit(apiKeyPrefix);
+      if (!rateResult.success) {
+        return NextResponse.json(
+          { error: "API请求太频繁，请稍后再试" },
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Remaining": String(rateResult.remaining),
+              "X-RateLimit-Reset": String(rateResult.reset),
+              "Retry-After": String(
+                Math.ceil((rateResult.reset - Date.now()) / 1000)
+              ),
+            },
+          }
+        );
+      }
+    } else {
+      const rateResult = await checkRateLimit(userId);
+      if (!rateResult.success) {
+        return NextResponse.json({ error: "请求太频繁" }, { status: 429 });
+      }
     }
 
-    const quota = await checkUsageQuota(user.id);
+    // ── 4. Quota check ────────────────────────────────────────────────
+    const quota = await checkUsageQuota(userId);
     if (!quota.allowed) {
-      return NextResponse.json({ error: "今日额度已用完", upgrade: true }, { status: 403 });
+      return NextResponse.json(
+        { error: "今日额度已用完", upgrade: true },
+        { status: 403 }
+      );
     }
 
-    const typeLabel = documentType === "menu" ? "菜单" : documentType === "receipt" ? "收据" : "合同";
+    // ── 4b. Monthly cost limit ────────────────────────────────────────
+    const globalCost = await checkGlobalCostLimit();
+    if (!globalCost.allowed) {
+      return NextResponse.json(
+        { error: globalCost.message },
+        { status: 503 }
+      );
+    }
+    const costCheck = await checkMonthlyCostLimit(userId);
+    if (!costCheck.allowed) {
+      return NextResponse.json(
+        { error: costCheck.upgradeMessage, upgrade: true },
+        { status: 403 }
+      );
+    }
+
+    // ── 5. Cache check ────────────────────────────────────────────────
+    const cached = await getOcrCache(ocrText, documentType);
+    if (cached) {
+      await logUsage({
+        userId,
+        taskType: "SCAN",
+        sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
+        modelUsed: cached.model + " (cached)",
+        tokensPrompt: 0,
+        tokensCompletion: 0,
+        cost: 0,
+        latency: Date.now() - startTime,
+        status: "ok",
+      });
+
+      return NextResponse.json({
+        ...cached,
+        cached: true,
+        costWarning: costCheck.warning || undefined,
+        usage: {
+          ...cached.usage,
+          latency: Date.now() - startTime,
+          cached: true,
+        },
+      });
+    }
+
+    // ── 6. LLM call ──────────────────────────────────────────────────
+    const typeLabel =
+      documentType === "menu"
+        ? "菜单"
+        : documentType === "receipt"
+          ? "收据"
+          : "合同";
     const systemPrompt = `You are VietBridge AI document analyzer. Analyze this ${typeLabel} OCR text.
 Output JSON with:
 - items: array of { name_vi, name_zh, price, unit, priceReasonable (boolean), note }
@@ -54,31 +155,56 @@ For menus: compare prices to Da Nang averages.
 For receipts: check for hidden charges.
 For contracts: identify risky clauses.`;
 
-    const isPro = user.role === "pro" || user.role === "admin";
-    const client = getClient(isPro ? "openai" : "qwen");
+    let isPro = userRole === "pro" || userRole === "admin";
+    if (costCheck.shouldDowngrade && isPro) {
+      isPro = false;
+    }
     const modelName = isPro ? "gpt-4o" : "qwen-plus";
 
-    const completion = await client.chat.completions.create({
-      model: modelName,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: ocrText },
-      ],
+    // Route config for fallback + cost limit
+    const routeConfig = await lookupModelRoute("SCAN",
+      documentType === "menu" ? "RESTAURANT" : "GENERAL");
+
+    // Single-request cost pre-check
+    const ocrMessages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: ocrText },
+    ];
+    if (routeConfig?.maxCost) {
+      const provider = isPro ? "openai" : "qwen";
+      const costPerToken = provider === "openai" ? 0.000005 : 0.000001;
+      const estCost = estimateTokens(systemPrompt + ocrText) * costPerToken;
+      if (estCost > routeConfig.maxCost) {
+        return NextResponse.json(
+          { error: "文档过长，预估成本超过单次限额" },
+          { status: 403 }
+        );
+      }
+    }
+
+    const llmResult = await callLLM({
+      messages: ocrMessages,
+      primaryModel: modelName,
+      fallbackModel: routeConfig?.fallbackModel,
+      maxLatency: routeConfig?.maxLatency,
       temperature: 0.3,
-      max_tokens: 2000,
+      maxTokens: 2000,
     });
 
-    const output = completion.choices[0]?.message?.content || "";
-    const tokensPrompt = completion.usage?.prompt_tokens || estimateTokens(systemPrompt + ocrText);
-    const tokensCompletion = completion.usage?.completion_tokens || estimateTokens(output);
+    const output = llmResult.output;
+    const actualModelUsed = llmResult.modelUsed;
+    const tokensPrompt = llmResult.tokensPrompt;
+    const tokensCompletion = llmResult.tokensCompletion;
     const latency = Date.now() - startTime;
-    const cost = (tokensPrompt + tokensCompletion) * (isPro ? 0.000005 : 0.000001);
+    const actualProvider = llmResult.provider;
+    const cost =
+      (tokensPrompt + tokensCompletion) * (actualProvider === "openai" ? 0.000005 : 0.000001);
 
     await logUsage({
-      userId: user.id,
+      userId,
       taskType: "SCAN",
       sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
-      modelUsed: modelName,
+      modelUsed: actualModelUsed,
       tokensPrompt,
       tokensCompletion,
       cost,
@@ -93,12 +219,28 @@ For contracts: identify risky clauses.`;
       data = { raw: output };
     }
 
-    return NextResponse.json({
+    // ── 7. Cache result (fire-and-forget) ────────────────────────────
+    const responsePayload: CachedOcrResult = {
       type: "document_analysis",
       documentType,
       data,
-      model: modelName,
-      usage: { tokensPrompt, tokensCompletion, cost: cost.toFixed(4), latency },
+      model: actualModelUsed,
+      usage: {
+        tokensPrompt,
+        tokensCompletion,
+        cost: cost.toFixed(4),
+        latency,
+      },
+    };
+
+    setOcrCache(ocrText, documentType, responsePayload).catch((err) =>
+      console.error("[OCR Cache Set Error]", err)
+    );
+
+    return NextResponse.json({
+      ...responsePayload,
+      cached: false,
+      costWarning: costCheck.warning || undefined,
     });
   } catch (error) {
     console.error("[OCR Analyze Error]", error);

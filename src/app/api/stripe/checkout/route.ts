@@ -15,12 +15,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
-    const { priceId } = await req.json();
-    if (!priceId) {
-      return NextResponse.json({ error: "缺少价格ID" }, { status: 400 });
+    const body = await req.json();
+    const priceId = typeof body.priceId === "string" ? body.priceId : "";
+    if (!priceId || !/^price_[a-zA-Z0-9]{8,}$/.test(priceId)) {
+      return NextResponse.json({ error: "无效的价格ID" }, { status: 400 });
     }
 
-    // Get or create Stripe customer
+    // Get or create Stripe customer (upsert to prevent TOCTOU race)
     const subscription = await prisma.subscription.findUnique({
       where: { userId: user.id },
     });
@@ -35,9 +36,14 @@ export async function POST(req: NextRequest) {
       });
       customerId = customer.id;
 
-      await prisma.subscription.update({
+      await prisma.subscription.upsert({
         where: { userId: user.id },
-        data: { stripeCustomerId: customerId },
+        create: {
+          userId: user.id,
+          plan: "FREE",
+          stripeCustomerId: customerId,
+        },
+        update: { stripeCustomerId: customerId },
       });
     }
 

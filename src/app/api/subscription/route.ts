@@ -17,8 +17,6 @@ export async function GET(req: NextRequest) {
     where: { userId: user.id },
     select: {
       plan: true,
-      stripeCustomerId: true,
-      stripeSubscriptionId: true,
       currentPeriodEnd: true,
       createdAt: true,
     },
@@ -27,8 +25,6 @@ export async function GET(req: NextRequest) {
   if (!subscription) {
     return NextResponse.json({
       plan: "FREE",
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
       currentPeriodEnd: null,
     });
   }

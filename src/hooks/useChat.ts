@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { TaskId } from "@/lib/intelligence/tasks";
 import type { SceneId } from "@/lib/intelligence/scene-rules";
 
@@ -31,9 +31,17 @@ export function useChat(options: UseChatOptions) {
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Keep ref in sync
   messagesRef.current = messages;
+
+  // Abort in-flight streaming on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const send = useCallback(
     async (input: string) => {
@@ -48,6 +56,10 @@ export function useChat(options: UseChatOptions) {
       try {
         if (options.stream) {
           // ── Streaming mode (SSE) ──────────────────────────────────────────
+          abortRef.current?.abort();
+          const controller = new AbortController();
+          abortRef.current = controller;
+
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -61,6 +73,7 @@ export function useChat(options: UseChatOptions) {
               conversationId,
               stream: true,
             }),
+            signal: controller.signal,
           });
 
           if (!res.ok) {

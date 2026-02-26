@@ -74,8 +74,7 @@ export default function ForgotPasswordPage() {
               邮件已发送
             </p>
             <p className="mb-6 text-sm text-[#888]">
-              如果 <span className="font-medium text-[#111]">{email}</span> 已注册，
-              您将收到一封重置密码的邮件。请检查收件箱（包括垃圾邮件）。
+              如果该邮箱已注册，您将收到一封重置密码的邮件。请检查收件箱（包括垃圾邮件）。
             </p>
             <Link
               href="/login"

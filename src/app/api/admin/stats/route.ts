@@ -17,15 +17,36 @@ export async function GET() {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const sevenDaysAgo = new Date(todayStart.getTime() - 7 * 86400000);
+  const yesterday = new Date(todayStart.getTime() - 86400000);
+  const eightDaysAgo = new Date(todayStart.getTime() - 8 * 86400000);
 
-  const [totalUsers, todayLogs, weekLogs, totalCost] = await Promise.all([
+  const [totalUsers, todayLogs, weekLogs, totalCost, d1Cohort, d7Cohort, todayActiveUsers] = await Promise.all([
     prisma.user.count(),
-    prisma.llmLog.count({ where: { createdAt: { gte: todayStart } } }),
+    prisma.llmLog.count({ where: { createdAt: { gte: todayStart }, deleted: false } }),
     prisma.llmLog.findMany({
-      where: { createdAt: { gte: sevenDaysAgo } },
+      where: { createdAt: { gte: sevenDaysAgo }, deleted: false },
       select: { createdAt: true, cost: true, taskType: true, modelUsed: true, tokensPrompt: true, tokensCompletion: true, latency: true },
+      take: 10000,
     }),
-    prisma.llmLog.aggregate({ _sum: { cost: true } }),
+    prisma.llmLog.aggregate({ where: { deleted: false }, _sum: { cost: true } }),
+    // D1 cohort: users active yesterday
+    prisma.usageLog.findMany({
+      where: { createdAt: { gte: yesterday, lt: todayStart } },
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
+    // D7 cohort: users active 7 days ago
+    prisma.usageLog.findMany({
+      where: { createdAt: { gte: eightDaysAgo, lt: sevenDaysAgo } },
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
+    // Today's active users
+    prisma.usageLog.findMany({
+      where: { createdAt: { gte: todayStart } },
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
   ]);
 
   // Daily trend
@@ -63,6 +84,13 @@ export async function GET() {
     model.latency = model.calls > 0 ? Math.round(model.latency / model.calls) : 0;
   }
 
+  // Retention calculation
+  const todayActiveSet = new Set(todayActiveUsers.map((u) => u.userId));
+  const d1CohortSize = d1Cohort.length;
+  const d1Retained = d1Cohort.filter((u) => todayActiveSet.has(u.userId)).length;
+  const d7CohortSize = d7Cohort.length;
+  const d7Retained = d7Cohort.filter((u) => todayActiveSet.has(u.userId)).length;
+
   return NextResponse.json({
     kpis: {
       totalUsers,
@@ -73,5 +101,17 @@ export async function GET() {
     dailyTrend: Array.from(dailyMap.entries()).map(([date, data]) => ({ date, ...data })),
     taskDistribution: Object.entries(taskDist).map(([task, count]) => ({ task, count })),
     modelStats: Object.entries(modelStats).map(([model, data]) => ({ model, ...data })),
+    retention: {
+      d1: {
+        rate: d1CohortSize > 0 ? Math.round((d1Retained / d1CohortSize) * 100) / 100 : 0,
+        cohortSize: d1CohortSize,
+        retained: d1Retained,
+      },
+      d7: {
+        rate: d7CohortSize > 0 ? Math.round((d7Retained / d7CohortSize) * 100) / 100 : 0,
+        cohortSize: d7CohortSize,
+        retained: d7Retained,
+      },
+    },
   });
 }

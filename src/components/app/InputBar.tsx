@@ -22,9 +22,12 @@ export default function InputBar({
 }: InputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const MAX_INPUT_LENGTH = 5000;
+
   const handleVoiceResult = useCallback(
     (text: string) => {
-      onChange(value + text);
+      const combined = value + text;
+      onChange(combined.slice(0, MAX_INPUT_LENGTH));
     },
     [value, onChange]
   );
@@ -85,9 +88,10 @@ export default function InputBar({
           <textarea
             ref={textareaRef}
             value={displayValue}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => onChange(e.target.value.slice(0, MAX_INPUT_LENGTH))}
             onKeyDown={handleKeyDown}
             placeholder="输入中文或越南语..."
+            maxLength={MAX_INPUT_LENGTH}
             rows={1}
             className="w-full resize-none rounded-[12px] border border-[#EDEDED] bg-[#F2F1EF] py-2 pl-3 pr-10 text-sm text-[#111] outline-none transition-colors placeholder:text-[#999] focus:border-[#999] focus:bg-white"
             style={{ minHeight: "38px", maxHeight: "110px", fontFamily: "'DM Sans', 'Noto Sans SC', sans-serif" }}
