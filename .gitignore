@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Android
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+*.apk
+*.aab
+
+# iOS
+ios/VietBridge.xcodeproj/xcuserdata/
+ios/VietBridge.xcodeproj/project.xcworkspace/xcuserdata/
+ios/DerivedData/

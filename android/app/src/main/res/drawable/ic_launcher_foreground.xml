@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#16A34A"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0" />
+    <!-- V letter -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,35L48,70L54,55L60,70L70,35L64,35L58,55L54,45L50,55L44,35Z" />
+    <!-- Bridge arc -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M35,68Q54,58 73,68"
+        android:strokeColor="#FFFFFF"
+        android:fillType="nonZero" />
+</vector>
