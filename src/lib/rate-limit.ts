@@ -23,12 +23,21 @@ export const apiKeyRateLimiter = new Ratelimit({
 });
 
 export async function checkRateLimit(identifier: string) {
-  const { success, remaining, reset } = await rateLimiter.limit(identifier);
-  return { success, remaining, reset };
+  try {
+    const { success, remaining, reset } = await rateLimiter.limit(identifier);
+    return { success, remaining, reset };
+  } catch {
+    // Redis unavailable — allow request (graceful degradation)
+    return { success: true, remaining: 999, reset: 0 };
+  }
 }
 
 export async function checkApiKeyRateLimit(apiKeyPrefix: string) {
-  const { success, remaining, reset } =
-    await apiKeyRateLimiter.limit(apiKeyPrefix);
-  return { success, remaining, reset };
+  try {
+    const { success, remaining, reset } =
+      await apiKeyRateLimiter.limit(apiKeyPrefix);
+    return { success, remaining, reset };
+  } catch {
+    return { success: true, remaining: 999, reset: 0 };
+  }
 }

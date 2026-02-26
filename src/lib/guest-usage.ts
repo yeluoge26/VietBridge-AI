@@ -19,24 +19,33 @@ function dailyKey(guestId: string): string {
 export async function checkGuestQuota(
   guestId: string
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
-  const key = dailyKey(guestId);
-  const used = (await redis.get<number>(key)) ?? 0;
-  return {
-    allowed: used < GUEST_DAILY_LIMIT,
-    used,
-    limit: GUEST_DAILY_LIMIT,
-  };
+  try {
+    const key = dailyKey(guestId);
+    const used = (await redis.get<number>(key)) ?? 0;
+    return {
+      allowed: used < GUEST_DAILY_LIMIT,
+      used,
+      limit: GUEST_DAILY_LIMIT,
+    };
+  } catch {
+    // Redis unavailable — allow request
+    return { allowed: true, used: 0, limit: GUEST_DAILY_LIMIT };
+  }
 }
 
 /**
  * Increment guest daily usage counter.
  */
 export async function incrementGuestUsage(guestId: string): Promise<void> {
-  const key = dailyKey(guestId);
-  const pipeline = redis.pipeline();
-  pipeline.incr(key);
-  pipeline.expire(key, DAILY_TTL);
-  await pipeline.exec();
+  try {
+    const key = dailyKey(guestId);
+    const pipeline = redis.pipeline();
+    pipeline.incr(key);
+    pipeline.expire(key, DAILY_TTL);
+    await pipeline.exec();
+  } catch {
+    // Redis unavailable — skip increment
+  }
 }
 
 /**
@@ -45,5 +54,9 @@ export async function incrementGuestUsage(guestId: string): Promise<void> {
 export async function getGuestUsage(
   guestId: string
 ): Promise<{ used: number; limit: number; allowed: boolean }> {
-  return checkGuestQuota(guestId);
+  try {
+    return await checkGuestQuota(guestId);
+  } catch {
+    return { used: 0, limit: GUEST_DAILY_LIMIT, allowed: true };
+  }
 }
