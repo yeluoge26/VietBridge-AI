@@ -336,7 +336,7 @@ export default function FinancePage() {
                   value={form.modelName}
                   onChange={(e) => setForm({ ...form, modelName: e.target.value })}
                   className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
-                  placeholder="例: qwen-turbo"
+                  placeholder="例: qwen-plus"
                 />
               </div>
 

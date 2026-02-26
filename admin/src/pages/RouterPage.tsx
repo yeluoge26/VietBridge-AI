@@ -117,8 +117,8 @@ export default function RouterPage() {
         body: JSON.stringify({
           taskType: "TRANSLATION",
           sceneType: "GENERAL",
-          primaryModel: "Qwen 7B",
-          fallbackModel: "Qwen 14B",
+          primaryModel: "qwen-plus",
+          fallbackModel: "gpt-4o",
           maxCost: 0.003,
           maxLatency: 1000,
           active: true,

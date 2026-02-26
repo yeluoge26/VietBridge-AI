@@ -434,7 +434,7 @@ export default function RouterPage({ toast }: RouterPageProps) {
                     value={form.fallbackModel}
                     onChange={(e) => setForm({ ...form, fallbackModel: e.target.value })}
                     className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
-                    placeholder="例: Qwen 14B"
+                    placeholder="例: qwen-plus"
                   />
                 </div>
               </div>
