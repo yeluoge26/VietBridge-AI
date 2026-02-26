@@ -332,6 +332,38 @@ async function main() {
 
   console.log(`  ✓ ${roles.length} admin roles seeded`);
 
+  // ── 7. Default TTS Model (Alibaba NLS 2.0) ─────────────────────────────
+  await prisma.ttsModel.upsert({
+    where: { name: "nls-default" },
+    update: {
+      displayName: "阿里云NLS语音合成",
+      provider: "nls",
+      apiModel: "",
+      apiEndpoint: "",
+      apiKeyEnv: "NLS_APPKEY",
+      voiceZh: "xiaoyun",
+      voiceVi: "xiaoyun",
+      speed: 1.0,
+      isDefault: true,
+      active: true,
+    },
+    create: {
+      name: "nls-default",
+      displayName: "阿里云NLS语音合成",
+      provider: "nls",
+      apiModel: "",
+      apiEndpoint: "",
+      apiKeyEnv: "NLS_APPKEY",
+      voiceZh: "xiaoyun",
+      voiceVi: "xiaoyun",
+      speed: 1.0,
+      isDefault: true,
+      active: true,
+    },
+  });
+
+  console.log("  ✓ Default TTS model (NLS) seeded");
+
   console.log("\nSeed completed successfully!");
 }
 
