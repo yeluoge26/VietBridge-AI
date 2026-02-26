@@ -2,11 +2,10 @@
 
 // ============================================================================
 // VietBridge AI V2 — Home Page / Main Chat Interface
-// Composes: TopBar, ContextBar, SceneChips, ChatView, AutoDetectBanner,
-//           ToneSlider, InputBar, TaskDrawer, Toast
+// Uses useChat hook with conversation persistence and TTS
 // ============================================================================
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import TopBar from "@/components/app/TopBar";
 import TaskDrawer from "@/components/app/TaskDrawer";
 import ContextBar from "@/components/app/ContextBar";
@@ -16,25 +15,18 @@ import AutoDetectBanner from "@/components/app/AutoDetectBanner";
 import ToneSlider from "@/components/app/ToneSlider";
 import InputBar from "@/components/app/InputBar";
 import Toast from "@/components/shared/Toast";
+import { useChat } from "@/hooks/useChat";
 import { TASKS, type TaskId } from "@/lib/intelligence/tasks";
-
-interface Message {
-  id: string;
-  type: string;
-  role: "user" | "assistant";
-  content: string;
-  [key: string]: unknown;
-}
+import type { SceneId } from "@/lib/intelligence/scene-rules";
+import { speak } from "@/lib/tts";
 
 export default function HomePage() {
   // ── State ──────────────────────────────────────────────────────────────
   const [task, setTask] = useState<TaskId>("translate");
-  const [scene, setScene] = useState("general");
+  const [scene, setScene] = useState<SceneId>("general");
   const [tone, setTone] = useState(50);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [langDir, setLangDir] = useState("zh-vi");
+  const [langDir, setLangDir] = useState("zh2vi");
   const [autoDetect, setAutoDetect] = useState(false);
   const [autoDetectTask, setAutoDetectTask] = useState("");
   const [autoDetectScene, setAutoDetectScene] = useState<string | null>(null);
@@ -44,15 +36,27 @@ export default function HomePage() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
 
-  // ── Current task info ──────────────────────────────────────────────────
+  // ── Chat hook ─────────────────────────────────────────────────────────
+  const {
+    messages,
+    loading,
+    error,
+    send,
+    clearMessages,
+    conversationId,
+  } = useChat({ task, scene, tone, langDir });
+
   const currentTaskInfo = TASKS[task];
 
-  // ── Toast helper ───────────────────────────────────────────────────────
   function showToast(msg: string) {
     setToastMessage(msg);
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 2500);
   }
+
+  useEffect(() => {
+    if (error) showToast(error);
+  }, [error]);
 
   // ── Intent detection on input change ───────────────────────────────────
   useEffect(() => {
@@ -61,25 +65,19 @@ export default function HomePage() {
       return;
     }
 
-    // Simple client-side heuristic intent detection
-    // Full LLM-based detection via lib/llm/intent-detector would be called here
     const trimmed = input.trim().toLowerCase();
     let detectedTask = "";
-    let detectedScene: string | null = null;
+    const detectedScene: string | null = null;
     let confidence = 0;
 
     if (trimmed.includes("翻译") || trimmed.includes("dịch")) {
-      detectedTask = "translate";
-      confidence = 85;
+      detectedTask = "translate"; confidence = 85;
     } else if (trimmed.includes("回复") || trimmed.includes("trả lời")) {
-      detectedTask = "reply";
-      confidence = 80;
+      detectedTask = "reply"; confidence = 80;
     } else if (trimmed.includes("风险") || trimmed.includes("rủi ro")) {
-      detectedTask = "risk";
-      confidence = 82;
+      detectedTask = "risk"; confidence = 82;
     } else if (trimmed.includes("教") || trimmed.includes("học")) {
-      detectedTask = "learn";
-      confidence = 78;
+      detectedTask = "learn"; confidence = 78;
     }
 
     if (confidence > 0 && detectedTask !== task) {
@@ -92,130 +90,94 @@ export default function HomePage() {
     }
   }, [input, task]);
 
-  // ── Send message ───────────────────────────────────────────────────────
-  const handleSend = useCallback(async () => {
+  // ── Handlers ───────────────────────────────────────────────────────────
+  function handleSend() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
-
-    const userMessage: Message = {
-      id: `msg-${Date.now()}`,
-      type: task,
-      role: "user",
-      content: trimmed,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    send(trimmed);
     setInput("");
-    setLoading(true);
+  }
 
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: trimmed,
-          task,
-          scene,
-          tone,
-          langDir,
-        }),
-      });
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text).then(() => showToast("已复制"));
+  }
 
-      const data = await res.json();
+  function handleSpeak(text: string, lang: "vi-VN" | "zh-CN" = "vi-VN") {
+    speak(text, lang);
+    showToast("正在播放...");
+  }
 
-      const assistantMessage: Message = {
-        id: `msg-${Date.now()}-res`,
-        type: task,
-        role: "assistant",
-        content: data.reply || data.error || "服务暂时不可用",
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch {
-      const errorMessage: Message = {
-        id: `msg-${Date.now()}-err`,
-        type: task,
-        role: "assistant",
-        content: "网络错误，请重试",
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
+  async function handleShare(text: string) {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try { await navigator.share({ title: "VietBridge AI", text }); } catch { /* cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(text);
+      showToast("已复制到剪贴板");
     }
-  }, [input, loading, task, scene, tone, langDir]);
+  }
 
-  // ── Tone modifier helpers ──────────────────────────────────────────────
+  function handleModify(mod: string) {
+    showToast(`正在${mod}调整...`);
+    const lastUserMsg = [...messages].reverse().find((m) => m.type === "user");
+    if (lastUserMsg?.text) send(lastUserMsg.text);
+  }
+
+  function handleTaskSelect(taskId: string) {
+    setTask(taskId as TaskId);
+    setDrawerOpen(false);
+  }
+
+  function applyAutoDetect() {
+    if (autoDetectTask) setTask(autoDetectTask as TaskId);
+    if (autoDetectScene) setScene(autoDetectScene as SceneId);
+    setAutoDetect(false);
+    showToast("已切换到建议模式");
+  }
+
+  function handleNewConversation() {
+    clearMessages();
+    showToast("新对话已开始");
+  }
+
   const toneModifiers = [
     { label: "更强势", delta: 20 },
     { label: "更委婉", delta: -20 },
     { label: "更正式", delta: 10 },
   ];
 
-  function applyToneModifier(delta: number) {
-    setTone((prev) => Math.max(0, Math.min(100, prev + delta)));
-  }
-
-  // ── Modify last assistant message ──────────────────────────────────────
-  function handleModify(mod: string) {
-    showToast(`正在${mod}调整...`);
-    // Future: re-call /api/chat with modifier
-  }
-
-  // ── Task selection ─────────────────────────────────────────────────────
-  function handleTaskSelect(taskId: string) {
-    setTask(taskId as TaskId);
-    setDrawerOpen(false);
-  }
-
-  // ── Apply auto-detected intent ─────────────────────────────────────────
-  function applyAutoDetect() {
-    if (autoDetectTask) {
-      setTask(autoDetectTask as TaskId);
-    }
-    if (autoDetectScene) {
-      setScene(autoDetectScene);
-    }
-    setAutoDetect(false);
-    showToast("已切换到建议模式");
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-1 flex-col bg-[#F8F7F5]">
-      {/* TopBar */}
       <TopBar
         currentTask={currentTaskInfo}
         onOpenTaskDrawer={() => setDrawerOpen(true)}
       />
 
-      {/* ContextBar */}
       <ContextBar
         task={task}
         scene={scene}
         location=""
         langDir={langDir}
-        onToggleLang={() =>
-          setLangDir((d) => (d === "zh-vi" ? "vi-zh" : "zh-vi"))
-        }
+        onToggleLang={() => setLangDir((d) => (d === "zh2vi" ? "vi2zh" : "zh2vi"))}
       />
 
-      {/* SceneChips */}
       <SceneChips
         activeScene={scene}
-        onSceneChange={setScene}
+        onSceneChange={(s) => setScene(s as SceneId)}
         visible={true}
       />
 
-      {/* ChatView — flex-1 to take remaining space */}
       <ChatView
         messages={messages}
         loading={loading}
         taskColor={currentTaskInfo.color}
         onTaskSelect={handleTaskSelect}
         onModify={handleModify}
+        onCopy={handleCopy}
+        onSpeak={handleSpeak}
+        onShare={handleShare}
       />
 
-      {/* AutoDetectBanner */}
       <AutoDetectBanner
         task={autoDetectTask}
         scene={autoDetectScene}
@@ -224,13 +186,9 @@ export default function HomePage() {
         visible={autoDetect}
       />
 
-      {/* ToneSlider (only when active) */}
-      {toneActive && (
-        <ToneSlider value={tone} onChange={setTone} />
-      )}
+      {toneActive && <ToneSlider value={tone} onChange={setTone} />}
 
-      {/* Tone modifiers */}
-      <div className="flex gap-2 px-4 pb-2">
+      <div className="flex items-center gap-2 px-4 pb-2">
         <button
           onClick={() => setToneActive((v) => !v)}
           className={`rounded-full border px-3 py-1 text-xs transition-colors ${
@@ -245,24 +203,32 @@ export default function HomePage() {
           toneModifiers.map((mod) => (
             <button
               key={mod.label}
-              onClick={() => applyToneModifier(mod.delta)}
+              onClick={() => setTone((prev) => Math.max(0, Math.min(100, prev + mod.delta)))}
               className="rounded-full border border-[#DDD] bg-white px-3 py-1 text-xs text-[#666] transition-colors hover:bg-[#F0F0F0]"
             >
               {mod.label}
             </button>
           ))}
+        <div className="flex-1" />
+        {(messages.length > 0 || conversationId) && (
+          <button
+            onClick={handleNewConversation}
+            className="rounded-full border border-[#DDD] bg-white px-3 py-1 text-xs text-[#666] transition-colors hover:bg-[#F0F0F0]"
+          >
+            新对话
+          </button>
+        )}
       </div>
 
-      {/* InputBar */}
       <InputBar
         value={input}
         onChange={setInput}
         onSend={handleSend}
         loading={loading}
         taskColor={currentTaskInfo.color}
+        voiceLang={langDir === "zh2vi" ? "zh-CN" : "vi-VN"}
       />
 
-      {/* TaskDrawer overlay */}
       <TaskDrawer
         open={drawerOpen}
         currentTask={task}
@@ -270,7 +236,6 @@ export default function HomePage() {
         onClose={() => setDrawerOpen(false)}
       />
 
-      {/* Toast */}
       <Toast message={toastMessage} visible={toastVisible} />
     </div>
   );

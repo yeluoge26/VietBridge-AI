@@ -24,6 +24,8 @@ export const chatSchema = z.object({
   tone: z.number().min(0).max(100).optional().default(50),
   langDir: z.enum(["zh2vi", "vi2zh"]).optional().default("zh2vi"),
   conversationHistory: z.array(z.any()).optional().default([]),
+  conversationId: z.string().optional(),
+  stream: z.boolean().optional().default(false),
 });
 
 export type ChatInput = z.infer<typeof chatSchema>;

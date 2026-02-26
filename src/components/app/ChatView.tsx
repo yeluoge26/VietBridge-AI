@@ -2,21 +2,22 @@
 
 import React, { useRef, useEffect } from "react";
 import DailyCard from "./cards/DailyCard";
-
-interface Message {
-  id: string;
-  type: string;
-  role: "user" | "assistant";
-  content: string;
-  [key: string]: unknown;
-}
+import TranslationCard from "./cards/TranslationCard";
+import ReplyCard from "./cards/ReplyCard";
+import RiskCard from "./cards/RiskCard";
+import TeachCard from "./cards/TeachCard";
+import FadeIn from "@/components/shared/FadeIn";
+import type { ChatMessage } from "@/hooks/useChat";
 
 interface ChatViewProps {
-  messages: Message[];
+  messages: ChatMessage[];
   loading: boolean;
   taskColor: string;
   onTaskSelect: (task: string) => void;
   onModify: (mod: string) => void;
+  onCopy?: (text: string) => void;
+  onSpeak?: (text: string, lang?: "vi-VN" | "zh-CN") => void;
+  onShare?: (text: string) => void;
 }
 
 const quickActions = [
@@ -56,7 +57,18 @@ function UserBubble({ content }: { content: string }) {
   );
 }
 
-function AssistantBubble({
+function StreamingBubble({ text }: { text: string }) {
+  return (
+    <div className="flex justify-start px-4 py-1.5">
+      <div className="max-w-[85%] rounded-[14px] rounded-bl-[4px] border border-[#EDEDED] bg-white px-4 py-2.5 text-sm text-[#111] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <div className="whitespace-pre-wrap">{text}</div>
+        <span className="inline-block h-4 w-1 animate-pulse bg-[#111]" />
+      </div>
+    </div>
+  );
+}
+
+function FallbackBubble({
   content,
   onModify,
 }: {
@@ -69,7 +81,6 @@ function AssistantBubble({
         <div className="rounded-[14px] rounded-bl-[4px] border border-[#EDEDED] bg-white px-4 py-2.5 text-sm text-[#111] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
           <div className="whitespace-pre-wrap">{content}</div>
         </div>
-        {/* Modify chips */}
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {["更正式", "更随意", "更简短"].map((mod) => (
             <button
@@ -92,61 +103,141 @@ export default function ChatView({
   taskColor,
   onTaskSelect,
   onModify,
+  onCopy,
+  onSpeak,
+  onShare,
 }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages or loading state changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
   const isEmpty = messages.length === 0;
 
+  const handleCopy = (text: string) => {
+    if (onCopy) onCopy(text);
+  };
+
   return (
     <div className="flex-1 overflow-y-auto pb-4">
       {isEmpty ? (
-        /* Empty state: DailyCard + quick actions */
         <div className="flex flex-col gap-4 pt-6">
-          <DailyCard />
-
-          {/* Quick action buttons */}
+          <FadeIn delay={0} direction="up">
+            <DailyCard />
+          </FadeIn>
           <div className="grid grid-cols-2 gap-2.5 px-4">
-            {quickActions.map((action) => (
-              <button
-                key={action.id}
-                onClick={() => onTaskSelect(action.id)}
-                className="flex items-center gap-2 rounded-[14px] border border-[#EDEDED] bg-white px-4 py-3 text-left transition-all hover:bg-[#F8F7F5] hover:shadow-sm active:scale-[0.98]"
-              >
-                <span className="text-lg">{action.icon}</span>
-                <span className="text-sm font-medium text-[#111]">
-                  {action.label}
-                </span>
-              </button>
+            {quickActions.map((action, i) => (
+              <FadeIn key={action.id} delay={100 + i * 60} direction="up">
+                <button
+                  onClick={() => onTaskSelect(action.id)}
+                  className="flex w-full items-center gap-2 rounded-[14px] border border-[#EDEDED] bg-white px-4 py-3 text-left transition-all hover:bg-[#F8F7F5] hover:shadow-sm active:scale-[0.98]"
+                >
+                  <span className="text-lg">{action.icon}</span>
+                  <span className="text-sm font-medium text-[#111]">
+                    {action.label}
+                  </span>
+                </button>
+              </FadeIn>
             ))}
           </div>
         </div>
       ) : (
-        /* Message list */
         <div className="flex flex-col gap-1 pt-3">
-          {messages.map((msg) => {
-            if (msg.role === "user") {
-              return <UserBubble key={msg.id} content={msg.content} />;
+          {messages.map((msg, idx) => {
+            const key = `msg-${idx}`;
+
+            // User message
+            if (msg.type === "user") {
+              return (
+                <FadeIn key={key} direction="left" duration={200}>
+                  <UserBubble content={msg.text || ""} />
+                </FadeIn>
+              );
             }
+
+            // Streaming message
+            if (msg.streaming) {
+              return <StreamingBubble key={key} text={msg.streamText || ""} />;
+            }
+
+            // Task-specific cards
+            if (msg.type === "translation" && msg.data) {
+              return (
+                <FadeIn key={key} direction="up" duration={350} className="px-4 py-1.5">
+                  <TranslationCard
+                    data={msg.data}
+                    prompt={msg.prompt}
+                    proactiveWarnings={msg.proactiveWarnings}
+                    hasContext={msg.hasContext}
+                    onCopy={handleCopy}
+                    onModify={onModify}
+                    onSpeak={onSpeak}
+                    onShare={onShare}
+                  />
+                </FadeIn>
+              );
+            }
+
+            if (msg.type === "reply" && msg.data) {
+              return (
+                <FadeIn key={key} direction="up" duration={350} className="px-4 py-1.5">
+                  <ReplyCard
+                    data={msg.data}
+                    tone={50}
+                    prompt={msg.prompt}
+                    proactiveWarnings={msg.proactiveWarnings}
+                    hasContext={msg.hasContext}
+                    onCopy={handleCopy}
+                    onSpeak={onSpeak}
+                    onShare={onShare}
+                  />
+                </FadeIn>
+              );
+            }
+
+            if (msg.type === "risk" && msg.data) {
+              return (
+                <FadeIn key={key} direction="up" duration={350} className="px-4 py-1.5">
+                  <RiskCard
+                    data={msg.data}
+                    prompt={msg.prompt}
+                    proactiveWarnings={msg.proactiveWarnings}
+                    hasContext={msg.hasContext}
+                    onCopy={handleCopy}
+                  />
+                </FadeIn>
+              );
+            }
+
+            if (msg.type === "teaching" && msg.data) {
+              return (
+                <FadeIn key={key} direction="up" duration={350} className="px-4 py-1.5">
+                  <TeachCard
+                    data={msg.data}
+                    prompt={msg.prompt}
+                    onCopy={handleCopy}
+                    onSpeak={onSpeak}
+                    onShare={onShare}
+                  />
+                </FadeIn>
+              );
+            }
+
+            // Fallback: plain text
             return (
-              <AssistantBubble
-                key={msg.id}
-                content={msg.content}
-                onModify={onModify}
-              />
+              <FadeIn key={key} direction="right" duration={250}>
+                <FallbackBubble
+                  content={msg.text || msg.data?.raw || ""}
+                  onModify={onModify}
+                />
+              </FadeIn>
             );
           })}
         </div>
       )}
 
-      {/* Loading indicator */}
       {loading && <LoadingDots color={taskColor} />}
-
-      {/* Scroll anchor */}
       <div ref={bottomRef} />
     </div>
   );

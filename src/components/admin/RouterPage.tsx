@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 /* ── Types ── */
 interface CostGuard {
@@ -11,14 +11,14 @@ interface CostGuard {
   color: string;
 }
 
-interface Route {
+interface RouteRecord {
   id: string;
-  task: string;
-  scene: string;
-  primary: string;
-  fallback: string;
-  maxCost: string;
-  maxLatency: string;
+  taskType: string;
+  sceneType: string;
+  primaryModel: string;
+  fallbackModel: string;
+  maxCost: number;
+  maxLatency: number;
   active: boolean;
 }
 
@@ -28,22 +28,11 @@ interface FallbackNode {
   color: string;
 }
 
-/* ── Mock data ── */
+/* ── Static data ── */
 const costGuards: CostGuard[] = [
   { id: "cg1", label: "月度预算", value: "$100", unit: "/月", color: "#FBBF24" },
   { id: "cg2", label: "单次上限", value: "$0.02", unit: "", color: "#EF4444" },
   { id: "cg3", label: "超时限制", value: "5000", unit: "ms", color: "#3B82F6" },
-];
-
-const initialRoutes: Route[] = [
-  { id: "r1", task: "翻译", scene: "通用", primary: "Qwen 7B", fallback: "Qwen 14B", maxCost: "$0.003", maxLatency: "1000ms", active: true },
-  { id: "r2", task: "翻译", scene: "合同", primary: "GPT-4o", fallback: "Claude-3.5", maxCost: "$0.02", maxLatency: "3000ms", active: true },
-  { id: "r3", task: "风险", scene: "租房", primary: "GPT-4o", fallback: "Qwen 14B", maxCost: "$0.015", maxLatency: "2500ms", active: true },
-  { id: "r4", task: "风险", scene: "诈骗", primary: "GPT-4o", fallback: "Claude-3.5", maxCost: "$0.02", maxLatency: "3000ms", active: true },
-  { id: "r5", task: "回复", scene: "客服", primary: "Qwen 14B", fallback: "Qwen 7B", maxCost: "$0.005", maxLatency: "1500ms", active: true },
-  { id: "r6", task: "教学", scene: "基础", primary: "Qwen 7B", fallback: "Qwen 14B", maxCost: "$0.003", maxLatency: "1000ms", active: true },
-  { id: "r7", task: "扫描", scene: "发票", primary: "Claude-3.5", fallback: "GPT-4o", maxCost: "$0.02", maxLatency: "3000ms", active: false },
-  { id: "r8", task: "翻译", scene: "电商", primary: "Qwen 14B", fallback: "GPT-4o", maxCost: "$0.01", maxLatency: "2000ms", active: true },
 ];
 
 const taskColors: Record<string, { color: string; bg: string }> = {
@@ -66,20 +55,111 @@ interface RouterPageProps {
 }
 
 export default function RouterPage({ toast }: RouterPageProps) {
-  const [routes, setRoutes] = useState(initialRoutes);
+  const [routes, setRoutes] = useState<RouteRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editingGuard, setEditingGuard] = useState<string | null>(null);
 
-  const toggleRoute = (id: string) => {
+  const fetchRoutes = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/admin/router");
+      if (!res.ok) throw new Error("Failed to fetch routes");
+      const data: RouteRecord[] = await res.json();
+      setRoutes(data);
+    } catch (err) {
+      console.error(err);
+      toast("加载路由数据失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchRoutes();
+  }, [fetchRoutes]);
+
+  /* ── Handlers ── */
+  const toggleRoute = async (id: string) => {
+    const route = routes.find((r) => r.id === id);
+    if (!route) return;
+
+    // Optimistic update
     setRoutes((prev) =>
       prev.map((r) => (r.id === id ? { ...r, active: !r.active } : r))
     );
+
+    try {
+      const res = await fetch("/api/admin/router", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, active: !route.active }),
+      });
+      if (!res.ok) throw new Error("Failed to update route");
+      toast(route.active ? "路由已禁用" : "路由已启用");
+    } catch (err) {
+      console.error(err);
+      // Revert on failure
+      setRoutes((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, active: route.active } : r))
+      );
+      toast("更新路由状态失败");
+    }
   };
+
+  const handleCreateRoute = async () => {
+    try {
+      const res = await fetch("/api/admin/router", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskType: "翻译",
+          sceneType: "通用",
+          primaryModel: "Qwen 7B",
+          fallbackModel: "Qwen 14B",
+          maxCost: 0.003,
+          maxLatency: 1000,
+          active: true,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create route");
+      toast("新路由已创建");
+      fetchRoutes();
+    } catch (err) {
+      console.error(err);
+      toast("创建路由失败");
+    }
+  };
+
+  /* ── Formatters ── */
+  const formatCost = (cost: number) => `$${cost.toFixed(3)}`;
+  const formatLatency = (ms: number) => `${ms}ms`;
+
+  /* ── Loading skeleton ── */
+  const LoadingSkeleton = () => (
+    <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4 space-y-3 animate-pulse">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="flex gap-4">
+          <div className="h-4 bg-[#27272F] rounded w-16" />
+          <div className="h-4 bg-[#27272F] rounded w-20" />
+          <div className="h-4 bg-[#27272F] rounded w-24" />
+          <div className="h-4 bg-[#27272F] rounded w-24" />
+          <div className="h-4 bg-[#27272F] rounded flex-1" />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-[16px] font-bold text-[#EAEAEF]">模型路由控制</h2>
+        <button
+          onClick={handleCreateRoute}
+          className="px-3 py-1.5 bg-[#3B82F6] rounded-lg text-[11px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer"
+        >
+          + 新增路由
+        </button>
       </div>
 
       {/* ── 成本防护 ── */}
@@ -114,60 +194,68 @@ export default function RouterPage({ toast }: RouterPageProps) {
       {/* ── 路由表 ── */}
       <div>
         <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-3">路由表</h3>
-        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
-          <table className="w-full" style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr className="border-b border-[#2A2A35]">
-                {["任务", "场景", "主模型", "备选模型", "最大成本", "最大延迟", "状态"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {routes.map((r) => {
-                const tc = taskColors[r.task] || { color: "#8B8B99", bg: "#2A2A35" };
-                return (
-                  <tr key={r.id} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
-                    <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
-                        style={{ color: tc.color, backgroundColor: tc.bg }}
-                      >
-                        {r.task}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">{r.scene}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#EAEAEF] font-mono">{r.primary}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#8B8B99] font-mono">{r.fallback}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#FBBF24]">{r.maxCost}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#8B8B99]">{r.maxLatency}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => toggleRoute(r.id)}
-                        className={`relative w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0 ${
-                          r.active ? "bg-[#3B82F6]" : "bg-[#2A2A35]"
-                        }`}
-                        role="switch"
-                        aria-checked={r.active}
-                      >
+        {loading ? (
+          <LoadingSkeleton />
+        ) : routes.length === 0 ? (
+          <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl px-4 py-8 text-center text-[13px] text-[#55556A]">
+            暂无路由规则
+          </div>
+        ) : (
+          <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
+            <table className="w-full" style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr className="border-b border-[#2A2A35]">
+                  {["任务", "场景", "主模型", "备选模型", "最大成本", "最大延迟", "状态"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {routes.map((r) => {
+                  const tc = taskColors[r.taskType] || { color: "#8B8B99", bg: "#2A2A35" };
+                  return (
+                    <tr key={r.id} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
+                      <td className="px-4 py-3">
                         <span
-                          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                            r.active ? "translate-x-4" : "translate-x-0"
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                          style={{ color: tc.color, backgroundColor: tc.bg }}
+                        >
+                          {r.taskType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">{r.sceneType}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#EAEAEF] font-mono">{r.primaryModel}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#8B8B99] font-mono">{r.fallbackModel}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#FBBF24]">{formatCost(r.maxCost)}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#8B8B99]">{formatLatency(r.maxLatency)}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => toggleRoute(r.id)}
+                          className={`relative w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0 ${
+                            r.active ? "bg-[#3B82F6]" : "bg-[#2A2A35]"
                           }`}
-                        />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          role="switch"
+                          aria-checked={r.active}
+                        >
+                          <span
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                              r.active ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ── 降级链 ── */}

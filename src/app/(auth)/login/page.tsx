@@ -5,17 +5,29 @@
 // Credentials + Google OAuth
 // ============================================================================
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("verified") === "1") {
+      setSuccess("邮箱验证成功，请登录");
+    }
+    const errorParam = searchParams.get("error");
+    if (errorParam) {
+      setError(errorParam);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -52,6 +64,13 @@ export default function LoginPage() {
         <h1 className="mb-6 text-center text-2xl font-bold text-[#111]">
           登录 VietBridge AI
         </h1>
+
+        {/* Success */}
+        {success && (
+          <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-600">
+            {success}
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -96,6 +115,15 @@ export default function LoginPage() {
               required
               className="w-full rounded-lg border border-[#DDD] px-4 py-2.5 text-sm text-[#111] outline-none transition-colors focus:border-[#111] focus:ring-1 focus:ring-[#111]"
             />
+          </div>
+
+          <div className="flex justify-end">
+            <Link
+              href="/forgot-password"
+              className="text-xs text-[#888] hover:text-[#111] hover:underline"
+            >
+              忘记密码？
+            </Link>
           </div>
 
           <button
@@ -152,5 +180,19 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#F5F5F5]">
+          <div className="text-sm text-[#888]">加载中...</div>
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

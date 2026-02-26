@@ -1,7 +1,8 @@
 // ============================================================================
 // VietBridge AI V2 — Unified Chat API Endpoint
 // Handles all 4 tasks: translate, reply, risk, learn
-// Pipeline: Auth → Validate → Rate-limit → Quota → Intent → Model → LLM → Log
+// Supports both streaming (SSE) and non-streaming modes
+// Pipeline: Auth → Validate → Rate-limit → Quota → Intent → Model → LLM → Log → Persist
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,12 +13,35 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { checkUsageQuota, logUsage } from "@/lib/usage";
 import { detectIntent } from "@/lib/llm/intent-detector";
 import { selectModel } from "@/lib/llm/model-router";
-import { buildPrompt } from "@/lib/llm/prompt-builder";
+import { buildPrompt, flattenToMessages } from "@/lib/llm/prompt-builder";
 import { getClient } from "@/lib/llm/client";
+import { generateResponse } from "@/lib/llm/response-generator";
 import { checkProactiveWarnings } from "@/lib/intelligence/proactive";
+import { searchKnowledgeBase, type KBHit } from "@/lib/intelligence/knowledge-base";
+import { searchDBKnowledge } from "@/lib/intelligence/kb-db";
 import { estimateTokens } from "@/lib/token-estimator";
+import { prisma } from "@/lib/prisma";
 import type { TaskId } from "@/lib/intelligence/tasks";
 import type { SceneId } from "@/lib/intelligence/scene-rules";
+
+// Map task IDs to Prisma enums
+const TASK_MAP: Record<string, string> = {
+  translate: "TRANSLATION",
+  reply: "REPLY",
+  risk: "RISK",
+  learn: "LEARN",
+};
+
+const SCENE_MAP: Record<string, string> = {
+  general: "GENERAL",
+  business: "BUSINESS",
+  staff: "STAFF",
+  couple: "COUPLE",
+  restaurant: "RESTAURANT",
+  rent: "RENT",
+  hospital: "HOSPITAL",
+  repair: "REPAIR",
+};
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
@@ -39,7 +63,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { input, tone, langDir, conversationHistory } = parsed.data;
+    const { input, langDir, conversationHistory } = parsed.data;
+    const conversationId = parsed.data.conversationId;
+    const stream = parsed.data.stream;
+    // Normalize tone from 0-100 (frontend slider) to 1-10 (prompt builder)
+    const tone = Math.max(1, Math.min(10, Math.round((parsed.data.tone / 100) * 9 + 1)));
 
     // ── 3. Rate limit ──────────────────────────────────────────────────────
     const rateResult = await checkRateLimit(userId);
@@ -64,6 +92,21 @@ export async function POST(req: NextRequest) {
     const task: TaskId = (parsed.data.task || intent.task) as TaskId;
     const scene: SceneId = (parsed.data.scene || intent.scene || "general") as SceneId;
 
+    // ── 5b. Knowledge base search (local + DB) ────────────────────────────
+    const localKBHits = searchKnowledgeBase(input, scene);
+    const dbKBHits = await searchDBKnowledge(input, scene);
+    // Merge and deduplicate by detail text
+    const seenDetails = new Set<string>();
+    const kbHits: KBHit[] = [];
+    for (const hit of [...localKBHits, ...dbKBHits]) {
+      const key = hit.detail.substring(0, 50);
+      if (!seenDetails.has(key)) {
+        seenDetails.add(key);
+        kbHits.push(hit);
+      }
+    }
+    const hasRAGHit = kbHits.length > 0;
+
     // ── 6. Model routing ───────────────────────────────────────────────────
     const isPro = session.user.role === "pro" || session.user.role === "admin";
     const model = selectModel({ task, scene, input, isPro });
@@ -82,49 +125,89 @@ export async function POST(req: NextRequest) {
       memory,
       input,
       conversationHistory,
+      kbHits,
     });
 
-    // ── 8. Call LLM ────────────────────────────────────────────────────────
-    const fullPrompt = Object.values(promptResult.layers)
-      .map((l) => l.content)
-      .join("\n\n");
-
+    // ── 8. Prepare LLM call ──────────────────────────────────────────────
+    const messages = flattenToMessages(promptResult.layers);
     const provider = model.tier === "pro" ? "openai" : "qwen";
     const client = getClient(provider);
-    const modelName =
-      provider === "openai" ? "gpt-4o" : "qwen-plus";
+    const modelName = provider === "openai" ? "gpt-4o" : "qwen-plus";
 
+    // ── 9. Ensure/create conversation record ─────────────────────────────
+    let convId = conversationId;
+    if (!convId) {
+      const conversation = await prisma.conversation.create({
+        data: {
+          userId,
+          taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
+          sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
+          title: input.substring(0, 50),
+        },
+      });
+      convId = conversation.id;
+    }
+
+    // Save user message
+    await prisma.message.create({
+      data: {
+        conversationId: convId,
+        role: "user",
+        content: input,
+      },
+    });
+
+    // ── 10. Streaming vs Non-streaming ───────────────────────────────────
+    if (stream) {
+      return handleStreamingResponse({
+        client,
+        modelName,
+        messages,
+        task,
+        scene,
+        tone,
+        input,
+        provider,
+        model,
+        promptResult,
+        conversationHistory,
+        userId,
+        convId,
+        startTime,
+        intent,
+        kbHits,
+        hasRAGHit,
+      });
+    }
+
+    // ── Non-streaming path ───────────────────────────────────────────────
     const completion = await client.chat.completions.create({
       model: modelName,
-      messages: [
-        { role: "system", content: fullPrompt },
-        { role: "user", content: input },
-      ],
+      messages,
       temperature: 0.7,
       max_tokens: 2000,
     });
 
     const output = completion.choices[0]?.message?.content || "";
-    const tokensPrompt = completion.usage?.prompt_tokens || estimateTokens(fullPrompt + input);
+    const tokensPrompt = completion.usage?.prompt_tokens || estimateTokens(messages.map((m) => m.content).join(""));
     const tokensCompletion = completion.usage?.completion_tokens || estimateTokens(output);
-
-    // ── 9. Proactive warnings ──────────────────────────────────────────────
-    const proactiveWarnings = checkProactiveWarnings(input, scene, tone);
-
-    // ── 10. Parse response ─────────────────────────────────────────────────
-    let responseData;
-    try {
-      responseData = JSON.parse(output);
-    } catch {
-      // If LLM didn't return JSON, wrap it
-      responseData = { raw: output };
-    }
-
     const latency = Date.now() - startTime;
     const costPerToken = provider === "openai" ? 0.000005 : 0.000001;
     const cost = (tokensPrompt + tokensCompletion) * costPerToken;
 
-    // ── 11. Log usage ──────────────────────────────────────────────────────
+    // Parse and structure response
+    const proactiveWarnings = checkProactiveWarnings(input, scene, tone);
+    const structuredResponse = generateResponse({
+      rawOutput: output,
+      task,
+      scene,
+      tone,
+      input,
+      modelName: model.name,
+      modelReason: model.reason,
+    });
+
+    // Log usage
     await logUsage({
       userId,
       taskType: task.toUpperCase(),
@@ -134,24 +217,58 @@ export async function POST(req: NextRequest) {
       tokensCompletion,
       cost,
       latency,
-      riskScore: responseData?.score || 0,
-      ragHit: !!responseData?.knowledgeHits?.length,
+      riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+      ragHit: hasRAGHit,
       status: "ok",
     });
 
-    // ── 12. Return response ────────────────────────────────────────────────
-    return NextResponse.json({
-      type: task === "translate" ? "translation"
-        : task === "reply" ? "reply"
-        : task === "risk" ? "risk"
-        : "teaching",
-      data: responseData,
-      prompt: {
-        layers: promptResult.layers,
-        model: { name: model.name, reason: model.reason },
+    // Save assistant message
+    await prisma.message.create({
+      data: {
+        conversationId: convId,
+        role: "assistant",
+        content: output,
+        metadata: structuredResponse.data as object,
+        modelUsed: modelName,
+        tokensPrompt,
+        tokensCompletion,
+        cost,
+        latency,
       },
-      proactiveWarnings,
+    });
+
+    // Log to LLM audit
+    await prisma.llmLog.create({
+      data: {
+        userId,
+        taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
+        sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
+        modelUsed: modelName,
+        input,
+        promptLayers: JSON.stringify(promptResult.layers),
+        output,
+        tokensPrompt,
+        tokensCompletion,
+        cost,
+        latency,
+        riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+        ragHit: hasRAGHit,
+        status: "ok",
+      },
+    });
+
+    // Inject KB hits into risk data if applicable
+    if (task === "risk" && structuredResponse.data && kbHits.length > 0) {
+      (structuredResponse.data as { knowledgeHits?: KBHit[] }).knowledgeHits = kbHits;
+    }
+
+    // Return response
+    return NextResponse.json({
+      ...structuredResponse,
+      proactiveWarnings: proactiveWarnings.length > 0 ? proactiveWarnings : undefined,
+      kbHits: kbHits.length > 0 ? kbHits : undefined,
       hasContext: conversationHistory.length > 1,
+      conversationId: convId,
       intent: { task, scene, confidence: intent.confidence },
       usage: {
         model: model.name,
@@ -168,4 +285,195 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// ============================================================================
+// Streaming Response Handler (SSE)
+// ============================================================================
+
+interface StreamParams {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any;
+  modelName: string;
+  messages: Array<{ role: string; content: string }>;
+  task: TaskId;
+  scene: SceneId;
+  tone: number;
+  input: string;
+  provider: string;
+  model: { name: string; reason: string; tier: string };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  promptResult: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  conversationHistory: any[];
+  userId: string;
+  convId: string;
+  startTime: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  intent: any;
+  kbHits: KBHit[];
+  hasRAGHit: boolean;
+}
+
+function handleStreamingResponse(params: StreamParams): Response {
+  const {
+    client,
+    modelName,
+    messages,
+    task,
+    scene,
+    tone,
+    input,
+    provider,
+    model,
+    promptResult,
+    conversationHistory,
+    userId,
+    convId,
+    startTime,
+    intent,
+    kbHits,
+    hasRAGHit,
+  } = params;
+
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const completion = await client.chat.completions.create({
+          model: modelName,
+          messages,
+          temperature: 0.7,
+          max_tokens: 2000,
+          stream: true,
+        });
+
+        let fullOutput = "";
+
+        for await (const chunk of completion) {
+          const delta = chunk.choices[0]?.delta?.content || "";
+          if (delta) {
+            fullOutput += delta;
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "delta", content: delta })}\n\n`)
+            );
+          }
+        }
+
+        // Stream complete — process final response
+        const tokensPrompt = estimateTokens(messages.map((m) => m.content).join(""));
+        const tokensCompletion = estimateTokens(fullOutput);
+        const latency = Date.now() - startTime;
+        const costPerToken = provider === "openai" ? 0.000005 : 0.000001;
+        const cost = (tokensPrompt + tokensCompletion) * costPerToken;
+
+        const proactiveWarnings = checkProactiveWarnings(input, scene, tone);
+        const structuredResponse = generateResponse({
+          rawOutput: fullOutput,
+          task,
+          scene,
+          tone,
+          input,
+          modelName: model.name,
+          modelReason: model.reason,
+        });
+
+        // Inject KB hits into risk data
+        if (task === "risk" && structuredResponse.data && kbHits.length > 0) {
+          (structuredResponse.data as { knowledgeHits?: KBHit[] }).knowledgeHits = kbHits;
+        }
+
+        // Send final structured message
+        const { type: msgType, ...restResponse } = structuredResponse;
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: "done",
+              messageType: msgType,
+              ...restResponse,
+              proactiveWarnings: proactiveWarnings.length > 0 ? proactiveWarnings : undefined,
+              kbHits: kbHits.length > 0 ? kbHits : undefined,
+              hasContext: conversationHistory.length > 1,
+              conversationId: convId,
+              intent: { task, scene, confidence: intent.confidence },
+              usage: {
+                model: model.name,
+                tokensPrompt,
+                tokensCompletion,
+                cost: cost.toFixed(4),
+                latency,
+              },
+            })}\n\n`
+          )
+        );
+
+        // Background: persist & log (non-blocking)
+        Promise.all([
+          logUsage({
+            userId,
+            taskType: task.toUpperCase(),
+            sceneType: scene.toUpperCase(),
+            modelUsed: model.name,
+            tokensPrompt,
+            tokensCompletion,
+            cost,
+            latency,
+            riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+            ragHit: hasRAGHit,
+            status: "ok",
+          }),
+          prisma.message.create({
+            data: {
+              conversationId: convId,
+              role: "assistant",
+              content: fullOutput,
+              metadata: structuredResponse.data as object,
+              modelUsed: modelName,
+              tokensPrompt,
+              tokensCompletion,
+              cost,
+              latency,
+            },
+          }),
+          prisma.llmLog.create({
+            data: {
+              userId,
+              taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
+              sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
+              modelUsed: modelName,
+              input,
+              promptLayers: JSON.stringify(promptResult.layers),
+              output: fullOutput,
+              tokensPrompt,
+              tokensCompletion,
+              cost,
+              latency,
+              riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+              ragHit: hasRAGHit,
+              status: "ok",
+            },
+          }),
+        ]).catch((err) => console.error("[Chat Persist Error]", err));
+
+        controller.close();
+      } catch (error) {
+        console.error("[Chat Stream Error]", error);
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "error", error: "服务暂时不可用" })}\n\n`
+          )
+        );
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }

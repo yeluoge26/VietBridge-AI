@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Metric from "./Metric";
 import {
   AreaChart,
@@ -18,43 +19,61 @@ import {
   Cell,
 } from "recharts";
 
-/* ── Mock data ── */
-const trendData = [
-  { day: "周一", calls: 2100, rag: 68 },
-  { day: "周二", calls: 2450, rag: 70 },
-  { day: "周三", calls: 2800, rag: 71 },
-  { day: "周四", calls: 2600, rag: 69 },
-  { day: "周五", calls: 3100, rag: 73 },
-  { day: "周六", calls: 2700, rag: 74 },
-  { day: "周日", calls: 2660, rag: 72 },
-];
+/* ── Types matching /api/admin/stats response ── */
+interface KPIs {
+  totalUsers: number;
+  todayCalls: number;
+  weekCalls: number;
+  totalCost: number;
+}
 
-const pieData = [
-  { name: "翻译", value: 52, color: "#3B82F6" },
-  { name: "回复", value: 22, color: "#A855F7" },
-  { name: "风险", value: 15, color: "#EF4444" },
-  { name: "教学", value: 8, color: "#22C55E" },
-  { name: "扫描", value: 3, color: "#F59E0B" },
-];
+interface DailyTrend {
+  date: string;
+  calls: number;
+  cost: number;
+}
 
-const costTrend = [
-  { day: "周一", cost: 5.2 },
-  { day: "周二", cost: 6.1 },
-  { day: "周三", cost: 7.3 },
-  { day: "周四", cost: 6.8 },
-  { day: "周五", cost: 8.4 },
-  { day: "周六", cost: 5.9 },
-  { day: "周日", cost: 6.2 },
-];
+interface TaskDistribution {
+  task: string;
+  count: number;
+}
 
-const models = [
-  { name: "Qwen-14B", calls: 8420, pct: 45, cost: "$12.60", latency: "320ms" },
-  { name: "GPT-4o", calls: 4210, pct: 23, cost: "$18.40", latency: "890ms" },
-  { name: "Qwen-7B", calls: 3150, pct: 17, cost: "$3.20", latency: "180ms" },
-  { name: "Claude-3.5", calls: 1840, pct: 10, cost: "$8.10", latency: "720ms" },
-  { name: "GPT-3.5", calls: 800, pct: 5, cost: "$0.90", latency: "240ms" },
-];
+interface ModelStat {
+  model: string;
+  calls: number;
+  tokens: number;
+  cost: number;
+  latency: number;
+}
 
+interface StatsResponse {
+  kpis: KPIs;
+  dailyTrend: DailyTrend[];
+  taskDistribution: TaskDistribution[];
+  modelStats: ModelStat[];
+}
+
+/* ── Task name mapping ── */
+const TASK_NAME_MAP: Record<string, string> = {
+  TRANSLATION: "翻译",
+  REPLY: "回复",
+  RISK: "风险",
+  LEARN: "教学",
+  SCAN: "扫描",
+};
+
+/* ── Pie chart colors by task ── */
+const TASK_COLOR_MAP: Record<string, string> = {
+  TRANSLATION: "#3B82F6",
+  REPLY: "#A855F7",
+  RISK: "#EF4444",
+  LEARN: "#22C55E",
+  SCAN: "#F59E0B",
+};
+
+const FALLBACK_COLORS = ["#3B82F6", "#A855F7", "#EF4444", "#22C55E", "#F59E0B", "#06B6D4", "#EC4899"];
+
+/* ── Tooltip style ── */
 const tooltipStyle = {
   contentStyle: {
     background: "#18181C",
@@ -66,31 +85,163 @@ const tooltipStyle = {
   itemStyle: { color: "#EAEAEF" },
 };
 
+/* ── Loading spinner ── */
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center h-[60vh]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-[#27272F] border-t-[#3B82F6] rounded-full animate-spin" />
+        <span className="text-[12px] text-[#55556A]">加载数据中…</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Helper: format date label (MM-DD) ── */
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function DashPage() {
+  const [data, setData] = useState<StatsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchStats() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/admin/stats");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json: StatsResponse = await res.json();
+        if (!cancelled) setData(json);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "加载失败");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchStats();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <LoadingSpinner />;
+
+  if (error || !data) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <span className="text-[13px] text-[#F87171]">加载失败: {error ?? "未知错误"}</span>
+      </div>
+    );
+  }
+
+  /* ── Derived data ── */
+  const { kpis, dailyTrend, taskDistribution, modelStats } = data;
+
+  // Trend chart data
+  const trendData = dailyTrend.map((d) => ({
+    day: fmtDate(d.date),
+    calls: d.calls,
+    cost: d.cost,
+  }));
+
+  // Cost trend data (reuse dailyTrend)
+  const costTrend = dailyTrend.map((d) => ({
+    day: fmtDate(d.date),
+    cost: Number(d.cost.toFixed(2)),
+  }));
+
+  // Pie data from taskDistribution
+  const totalTasks = taskDistribution.reduce((s, t) => s + t.count, 0);
+  const pieData = taskDistribution.map((t, idx) => ({
+    name: TASK_NAME_MAP[t.task] || t.task,
+    value: totalTasks > 0 ? Math.round((t.count / totalTasks) * 100) : 0,
+    color: TASK_COLOR_MAP[t.task] || FALLBACK_COLORS[idx % FALLBACK_COLORS.length],
+  }));
+
+  // Model rankings sorted by calls descending
+  const totalModelCalls = modelStats.reduce((s, m) => s + m.calls, 0);
+  const models = [...modelStats]
+    .sort((a, b) => b.calls - a.calls)
+    .map((m) => ({
+      name: m.model,
+      calls: m.calls,
+      pct: totalModelCalls > 0 ? Math.round((m.calls / totalModelCalls) * 100) : 0,
+      cost: `$${m.cost.toFixed(2)}`,
+      latency: `${Math.round(m.latency)}ms`,
+    }));
+
+  // Computed summary stats
+  const avgCostPerCall =
+    kpis.weekCalls > 0 ? (kpis.totalCost / kpis.weekCalls).toFixed(4) : "0";
+  const avgLatency =
+    modelStats.length > 0
+      ? Math.round(
+          modelStats.reduce((s, m) => s + m.latency * m.calls, 0) /
+            (totalModelCalls || 1)
+        )
+      : 0;
+
+  // RAG hit rate: not directly available from API, show N/A
+  const ragHitRate = "N/A";
+
   return (
     <div className="space-y-6">
       {/* ── KPI Row 1 ── */}
       <div className="grid grid-cols-4 gap-4">
-        <Metric label="DAU" value="342" delta={12.5} />
-        <Metric label="API 调用" value="18,420" delta={15.2} />
-        <Metric label="月收入" value="4,280" prefix="$" delta={22.1} />
-        <Metric label="Pro 转化" value="10.7" suffix="%" delta={1.2} />
+        <Metric
+          label="总用户数"
+          value={kpis.totalUsers.toLocaleString()}
+        />
+        <Metric
+          label="今日调用"
+          value={kpis.todayCalls.toLocaleString()}
+        />
+        <Metric
+          label="本周调用"
+          value={kpis.weekCalls.toLocaleString()}
+        />
+        <Metric
+          label="总成本"
+          value={kpis.totalCost.toFixed(2)}
+          prefix="$"
+        />
       </div>
 
       {/* ── KPI Row 2 ── */}
       <div className="grid grid-cols-4 gap-4">
-        <Metric label="RAG 命中率" value="72.3" suffix="%" delta={3.1} />
-        <Metric label="风险触发" value="234" delta={-5.2} />
-        <Metric label="成功率" value="96.8" suffix="%" />
-        <Metric label="7日留存" value="45.2" suffix="%" />
+        <Metric
+          label="RAG 命中率"
+          value={ragHitRate}
+          suffix={ragHitRate !== "N/A" ? "%" : undefined}
+        />
+        <Metric
+          label="模型数量"
+          value={modelStats.length.toString()}
+        />
+        <Metric
+          label="平均延迟"
+          value={avgLatency.toString()}
+          suffix="ms"
+        />
+        <Metric
+          label="单次成本"
+          value={avgCostPerCall}
+          prefix="$"
+        />
       </div>
 
       {/* ── Charts Row ── */}
       <div className="grid grid-cols-2 gap-4">
-        {/* 7-day trend */}
+        {/* Daily trend */}
         <div className="bg-[#18181C] border border-[#27272F] rounded-xl p-4">
           <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-4">
-            7日趋势
+            每日趋势
           </h3>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={trendData}>
@@ -119,7 +270,6 @@ export default function DashPage() {
                 tick={{ fill: "#55556A", fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
-                domain={[60, 80]}
               />
               <Tooltip {...tooltipStyle} />
               <Area
@@ -134,11 +284,11 @@ export default function DashPage() {
               <Line
                 yAxisId="right"
                 type="monotone"
-                dataKey="rag"
+                dataKey="cost"
                 stroke="#22C55E"
                 strokeWidth={2}
                 dot={false}
-                name="RAG%"
+                name="成本($)"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -256,15 +406,15 @@ export default function DashPage() {
           <div className="grid grid-cols-3 gap-3 mt-4">
             <div className="text-center">
               <div className="text-[10px] text-[#55556A] mb-1">单次成本</div>
-              <div className="text-[14px] font-bold text-[#EAEAEF]">$0.0023</div>
+              <div className="text-[14px] font-bold text-[#EAEAEF]">${avgCostPerCall}</div>
             </div>
             <div className="text-center">
               <div className="text-[10px] text-[#55556A] mb-1">平均延迟</div>
-              <div className="text-[14px] font-bold text-[#EAEAEF]">420ms</div>
+              <div className="text-[14px] font-bold text-[#EAEAEF]">{avgLatency}ms</div>
             </div>
             <div className="text-center">
-              <div className="text-[10px] text-[#55556A] mb-1">Free:Pro</div>
-              <div className="text-[14px] font-bold text-[#EAEAEF]">7.2:1</div>
+              <div className="text-[10px] text-[#55556A] mb-1">模型数</div>
+              <div className="text-[14px] font-bold text-[#EAEAEF]">{modelStats.length}</div>
             </div>
           </div>
         </div>

@@ -100,6 +100,66 @@ export async function POST(req: NextRequest) {
         }
         break;
       }
+
+      case "invoice.payment_failed": {
+        const failedInvoice = event.data.object;
+        const failedSubId = (failedInvoice as unknown as { subscription: string | null }).subscription;
+        const attemptCount = (failedInvoice as unknown as { attempt_count?: number }).attempt_count || 0;
+
+        console.warn(
+          `[Stripe Webhook] Payment failed for subscription ${failedSubId}, attempt #${attemptCount}`
+        );
+
+        // After 3 failed attempts, downgrade to FREE
+        if (failedSubId && attemptCount >= 3) {
+          const sub = await prisma.subscription.findFirst({
+            where: { stripeSubscriptionId: failedSubId },
+          });
+
+          if (sub) {
+            await prisma.subscription.update({
+              where: { id: sub.id },
+              data: {
+                plan: "FREE",
+                stripeSubscriptionId: null,
+                stripePriceId: null,
+                currentPeriodEnd: null,
+              },
+            });
+            console.warn(
+              `[Stripe Webhook] Downgraded user ${sub.userId} to FREE after ${attemptCount} failed payment attempts`
+            );
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const updatedSub = event.data.object;
+        const updatedCustomerId = updatedSub.customer as string;
+        const updatedPriceId = updatedSub.items?.data[0]?.price?.id;
+
+        const existingSub = await prisma.subscription.findFirst({
+          where: { stripeCustomerId: updatedCustomerId },
+        });
+
+        if (existingSub && updatedPriceId) {
+          let plan: "FREE" | "PRO" | "ENTERPRISE" | "API" = "PRO";
+          if (updatedPriceId === process.env.STRIPE_ENT_PRICE_ID) {
+            plan = "ENTERPRISE";
+          }
+
+          await prisma.subscription.update({
+            where: { id: existingSub.id },
+            data: {
+              plan,
+              stripePriceId: updatedPriceId,
+              currentPeriodEnd: new Date(((updatedSub as unknown as Record<string, number>).current_period_end) * 1000),
+            },
+          });
+        }
+        break;
+      }
     }
 
     return NextResponse.json({ received: true });

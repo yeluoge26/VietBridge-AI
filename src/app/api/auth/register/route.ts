@@ -5,8 +5,10 @@
 
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { sendVerificationEmail } from "@/lib/email";
 
 const registerSchema = z.object({
   name: z.string().min(1, "请输入姓名"),
@@ -42,7 +44,9 @@ export async function POST(req: Request) {
     // Hash password
     const hashedPassword = await hash(password, 12);
 
-    // Create user + FREE subscription in transaction
+    // Create user + FREE subscription + verification token in transaction
+    const verificationToken = randomBytes(32).toString("hex");
+
     await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -58,6 +62,19 @@ export async function POST(req: Request) {
           plan: "FREE",
         },
       });
+
+      await tx.verificationToken.create({
+        data: {
+          identifier: email,
+          token: verificationToken,
+          expires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
+        },
+      });
+    });
+
+    // Send verification email (non-blocking — don't fail registration if email fails)
+    sendVerificationEmail(email, verificationToken).catch((err) => {
+      console.error("Failed to send verification email:", err);
     });
 
     return NextResponse.json({ success: true }, { status: 201 });

@@ -29,6 +29,8 @@ interface TranslationCardProps {
   hasContext?: boolean;
   onCopy: (text: string) => void;
   onModify?: (mod: string) => void;
+  onSpeak?: (text: string, lang?: "vi-VN" | "zh-CN") => void;
+  onShare?: (text: string) => void;
 }
 
 export default function TranslationCard({
@@ -37,6 +39,8 @@ export default function TranslationCard({
   proactiveWarnings,
   hasContext,
   onCopy,
+  onSpeak,
+  onShare,
 }: TranslationCardProps) {
   const [toneOpen, setToneOpen] = useState(false);
   const [footerOpen, setFooterOpen] = useState(false);
@@ -68,6 +72,7 @@ export default function TranslationCard({
               {/* Play button */}
               <button
                 type="button"
+                onClick={() => onSpeak?.(data.translation, "vi-VN")}
                 className="flex h-7 w-7 items-center justify-center rounded-full bg-white transition-colors hover:bg-[#EDEDED]"
                 aria-label="播放"
               >
@@ -79,6 +84,28 @@ export default function TranslationCard({
                   stroke="none"
                 >
                   <polygon points="5,3 19,12 5,21" />
+                </svg>
+              </button>
+              {/* Share button */}
+              <button
+                type="button"
+                onClick={() => onShare?.(data.translation)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white transition-colors hover:bg-[#EDEDED]"
+                aria-label="分享"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
                 </svg>
               </button>
               {/* Copy button */}

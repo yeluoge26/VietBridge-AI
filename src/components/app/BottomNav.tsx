@@ -59,15 +59,19 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className="relative flex flex-1 flex-col items-center gap-0.5 pt-2 pb-2 transition-colors"
+            className="relative flex flex-1 flex-col items-center gap-0.5 pt-2 pb-2 transition-all active:scale-95"
           >
             {/* Active indicator dot */}
-            {isActive && (
-              <span className="absolute top-0 left-1/2 h-[3px] w-5 -translate-x-1/2 rounded-full bg-[#111]" />
-            )}
-            {tab.icon(isActive)}
             <span
-              className={`text-[11px] leading-tight ${
+              className={`absolute top-0 left-1/2 h-[3px] w-5 -translate-x-1/2 rounded-full bg-[#111] transition-all duration-200 ${
+                isActive ? "opacity-100 scale-x-100" : "opacity-0 scale-x-0"
+              }`}
+            />
+            <span className={`transition-transform duration-200 ${isActive ? "scale-110" : "scale-100"}`}>
+              {tab.icon(isActive)}
+            </span>
+            <span
+              className={`text-[11px] leading-tight transition-colors duration-200 ${
                 isActive ? "font-bold text-[#111]" : "font-normal text-[#999]"
               }`}
             >

@@ -98,6 +98,7 @@ export const authOptions: NextAuthOptions = {
 
   pages: {
     signIn: "/login",
+    verifyRequest: "/login?verified=check",
   },
 
   // ---------------------------------------------------------------------------

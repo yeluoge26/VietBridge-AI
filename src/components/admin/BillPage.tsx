@@ -1,210 +1,182 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 /* ── Types ── */
-interface Plan {
-  name: string;
-  price: string;
-  period: string;
-  limit: string;
+interface PlanStat {
+  plan: string;
+  count: number;
   color: string;
-  isCurrent: boolean;
+  label: string;
+  price: string;
+  limit: string;
 }
 
-interface ApiKey {
-  id: string;
-  name: string;
-  key: string;
-  createdAt: string;
-  lastUsed: string;
-  active: boolean;
+interface RevenueData {
+  totalUsers: number;
+  paidUsers: number;
+  freeUsers: number;
+  planBreakdown: PlanStat[];
 }
 
-interface Invoice {
-  id: string;
-  date: string;
-  description: string;
-  amount: string;
-  status: "已支付" | "待支付" | "失败";
-}
-
-/* ── Mock data ── */
-const plans: Plan[] = [
-  { name: "FREE", price: "¥0", period: "", limit: "50次/天", color: "#8B8B99", isCurrent: false },
-  { name: "PRO", price: "¥49", period: "/月", limit: "999次/天", color: "#3B82F6", isCurrent: true },
-  { name: "ENTERPRISE", price: "¥299", period: "/月", limit: "无限", color: "#A855F7", isCurrent: false },
-  { name: "API", price: "$0.001", period: "/次", limit: "按量付费", color: "#FBBF24", isCurrent: false },
-];
-
-const initialKeys: ApiKey[] = [
-  { id: "k1", name: "Production Key", key: "vb-pk-****-****-a1b2", createdAt: "2024-10-15", lastUsed: "2024-12-20 14:30", active: true },
-  { id: "k2", name: "Staging Key", key: "vb-sk-****-****-c3d4", createdAt: "2024-11-02", lastUsed: "2024-12-19 09:15", active: true },
-  { id: "k3", name: "Dev Key", key: "vb-dk-****-****-e5f6", createdAt: "2024-12-01", lastUsed: "2024-12-18 16:45", active: false },
-];
-
-const invoices: Invoice[] = [
-  { id: "inv1", date: "2024-12-01", description: "PRO 月度订阅 - 12月", amount: "¥49.00", status: "已支付" },
-  { id: "inv2", date: "2024-12-15", description: "API 超量调用 (2,340次)", amount: "¥16.38", status: "已支付" },
-  { id: "inv3", date: "2024-11-01", description: "PRO 月度订阅 - 11月", amount: "¥49.00", status: "已支付" },
-  { id: "inv4", date: "2025-01-01", description: "PRO 月度订阅 - 1月", amount: "¥49.00", status: "待支付" },
-  { id: "inv5", date: "2024-10-15", description: "ENTERPRISE 升级差价", amount: "¥125.00", status: "失败" },
-];
-
-const invoiceStatusColors: Record<string, { color: string; bg: string }> = {
-  已支付: { color: "#22C55E", bg: "#22C55E20" },
-  待支付: { color: "#FBBF24", bg: "#FBBF2420" },
-  失败: { color: "#EF4444", bg: "#EF444420" },
+const PLAN_CONFIG: Record<string, { color: string; label: string; price: string; limit: string }> = {
+  FREE: { color: "#8B8B99", label: "免费版", price: "¥0", limit: "50次/天" },
+  PRO: { color: "#3B82F6", label: "专业版", price: "¥49/月", limit: "999次/天" },
+  ENTERPRISE: { color: "#A855F7", label: "企业版", price: "¥299/月", limit: "无限" },
+  API: { color: "#FBBF24", label: "API", price: "按量", limit: "无限" },
 };
 
 export default function BillPage() {
-  const [keys, setKeys] = useState(initialKeys);
+  const [data, setData] = useState<RevenueData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const toggleKey = (id: string) => {
-    setKeys((prev) =>
-      prev.map((k) => (k.id === id ? { ...k, active: !k.active } : k))
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/billing");
+      if (res.ok) {
+        setData(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch billing data", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#2A2A35] border-t-[#3B82F6]" />
+      </div>
     );
-  };
+  }
+
+  const planBreakdown = data?.planBreakdown || [];
+  const estimatedMRR = planBreakdown.reduce((sum, p) => {
+    if (p.plan === "PRO") return sum + p.count * 49;
+    if (p.plan === "ENTERPRISE") return sum + p.count * 299;
+    return sum;
+  }, 0);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-[16px] font-bold text-[#EAEAEF]">计费管理</h2>
+        <button
+          onClick={fetchData}
+          className="px-3 py-1.5 bg-[#2A2A35] rounded-lg text-[11px] font-medium text-[#EAEAEF] hover:bg-[#333340] transition-all cursor-pointer"
+        >
+          刷新
+        </button>
       </div>
 
-      {/* ── 套餐方案 ── */}
+      {/* Revenue overview */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4">
+          <div className="text-[10px] text-[#55556A] uppercase tracking-wider mb-2">总用户</div>
+          <div className="text-[24px] font-bold text-[#EAEAEF]">{data?.totalUsers || 0}</div>
+        </div>
+        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4">
+          <div className="text-[10px] text-[#55556A] uppercase tracking-wider mb-2">付费用户</div>
+          <div className="text-[24px] font-bold text-[#22C55E]">{data?.paidUsers || 0}</div>
+        </div>
+        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4">
+          <div className="text-[10px] text-[#55556A] uppercase tracking-wider mb-2">免费用户</div>
+          <div className="text-[24px] font-bold text-[#8B8B99]">{data?.freeUsers || 0}</div>
+        </div>
+        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4">
+          <div className="text-[10px] text-[#55556A] uppercase tracking-wider mb-2">预估 MRR</div>
+          <div className="text-[24px] font-bold text-[#FBBF24]">¥{estimatedMRR}</div>
+        </div>
+      </div>
+
+      {/* Plan breakdown */}
       <div>
-        <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-3">套餐方案</h3>
+        <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-3">套餐分布</h3>
         <div className="grid grid-cols-4 gap-4">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`bg-[#18181C] rounded-xl p-4 transition-all hover:border-[#333340] ${
-                plan.isCurrent
-                  ? "ring-1 ring-[#3B82F6]/30"
-                  : ""
-              }`}
-              style={{
-                border: plan.isCurrent
-                  ? `1px solid ${plan.color}40`
-                  : "1px solid #2A2A35",
-              }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[13px] font-bold" style={{ color: plan.color }}>
-                  {plan.name}
-                </span>
-                {plan.isCurrent && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-medium text-[#3B82F6] bg-[#3B82F620]">
-                    当前
+          {Object.entries(PLAN_CONFIG).map(([planId, config]) => {
+            const stat = planBreakdown.find((p) => p.plan === planId);
+            const count = stat?.count || 0;
+            const pct =
+              data?.totalUsers && data.totalUsers > 0
+                ? Math.round((count / data.totalUsers) * 100)
+                : 0;
+
+            return (
+              <div
+                key={planId}
+                className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span
+                    className="text-[13px] font-bold"
+                    style={{ color: config.color }}
+                  >
+                    {config.label}
                   </span>
-                )}
+                  <span className="text-[11px] text-[#55556A]">{config.price}</span>
+                </div>
+                <div className="text-[24px] font-bold text-[#EAEAEF] mb-1">{count}</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-[#2A2A35] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: config.color,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-[#55556A]">{pct}%</span>
+                </div>
+                <div className="text-[10px] text-[#55556A] mt-2">{config.limit}</div>
               </div>
-              <div className="flex items-baseline gap-0.5 mb-2">
-                <span className="text-[24px] font-bold text-[#EAEAEF]">{plan.price}</span>
-                {plan.period && (
-                  <span className="text-[12px] text-[#55556A]">{plan.period}</span>
-                )}
-              </div>
-              <div className="text-[11px] text-[#8B8B99]">{plan.limit}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* ── API 密钥 ── */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[13px] font-semibold text-[#EAEAEF]">API 密钥</h3>
-          <button className="px-3 py-1.5 bg-[#3B82F6] rounded-lg text-[11px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer">
-            生成新密钥
-          </button>
+      {/* Conversion funnel */}
+      {data && data.totalUsers > 0 && (
+        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-5">
+          <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-4">转化漏斗</h3>
+          <div className="space-y-3">
+            {[
+              { label: "注册用户", count: data.totalUsers, color: "#8B8B99" },
+              {
+                label: "付费用户",
+                count: data.paidUsers,
+                color: "#22C55E",
+              },
+            ].map((step) => {
+              const pct = Math.round((step.count / data.totalUsers) * 100);
+              return (
+                <div key={step.label} className="flex items-center gap-3">
+                  <span className="w-20 text-[11px] text-[#8B8B99]">{step.label}</span>
+                  <div className="flex-1 h-3 bg-[#2A2A35] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: step.color,
+                      }}
+                    />
+                  </div>
+                  <span className="w-16 text-right text-[11px] text-[#EAEAEF]">
+                    {step.count} ({pct}%)
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
-          <table className="w-full" style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr className="border-b border-[#2A2A35]">
-                {["名称", "密钥", "创建时间", "最后使用", "状态"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((k) => (
-                <tr key={k.id} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
-                  <td className="px-4 py-3 text-[12px] font-medium text-[#EAEAEF]">{k.name}</td>
-                  <td className="px-4 py-3 text-[11px] text-[#55556A] font-mono">{k.key}</td>
-                  <td className="px-4 py-3 text-[11px] text-[#8B8B99]">{k.createdAt}</td>
-                  <td className="px-4 py-3 text-[11px] text-[#8B8B99]">{k.lastUsed}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleKey(k.id)}
-                      className={`relative w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0 ${
-                        k.active ? "bg-[#3B82F6]" : "bg-[#2A2A35]"
-                      }`}
-                      role="switch"
-                      aria-checked={k.active}
-                    >
-                      <span
-                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                          k.active ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── 账单历史 ── */}
-      <div>
-        <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-3">账单历史</h3>
-        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
-          <table className="w-full" style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr className="border-b border-[#2A2A35]">
-                {["日期", "描述", "金额", "状态"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => {
-                const sc = invoiceStatusColors[inv.status] || { color: "#8B8B99", bg: "#2A2A35" };
-                return (
-                  <tr key={inv.id} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
-                    <td className="px-4 py-3 text-[11px] text-[#8B8B99]">{inv.date}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">{inv.description}</td>
-                    <td className="px-4 py-3 text-[12px] font-medium text-[#FBBF24]">{inv.amount}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
-                        style={{ color: sc.color, backgroundColor: sc.bg }}
-                      >
-                        {inv.status}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

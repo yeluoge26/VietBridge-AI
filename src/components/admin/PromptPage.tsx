@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 /* ── Types ── */
 interface PromptLayer {
@@ -10,12 +10,12 @@ interface PromptLayer {
   value: string;
 }
 
-interface VersionEntry {
+interface PromptVersion {
+  id: string;
   version: string;
-  creator: string;
+  changes: string;
+  status: "active" | "draft" | "archived";
   createdAt: string;
-  abTest: string;
-  status: "active" | "archived" | "testing";
 }
 
 interface ABPanel {
@@ -28,8 +28,8 @@ interface ABPanel {
   status: string;
 }
 
-/* ── Mock data ── */
-const initialLayers: PromptLayer[] = [
+/* ── Default layers (used when editor is empty) ── */
+const defaultLayers: PromptLayer[] = [
   {
     id: "system_persona",
     label: "System Persona",
@@ -74,14 +74,7 @@ const initialLayers: PromptLayer[] = [
   },
 ];
 
-const versions: VersionEntry[] = [
-  { version: "v1.4", creator: "张工", createdAt: "2024-12-20 15:30", abTest: "进行中", status: "testing" },
-  { version: "v1.3", creator: "李工", createdAt: "2024-12-18 10:00", abTest: "已完成", status: "active" },
-  { version: "v1.2", creator: "张工", createdAt: "2024-12-10 09:15", abTest: "已完成", status: "archived" },
-  { version: "v1.1", creator: "王工", createdAt: "2024-11-28 14:20", abTest: "未测试", status: "archived" },
-  { version: "v1.0", creator: "张工", createdAt: "2024-11-15 08:00", abTest: "已完成", status: "archived" },
-];
-
+/* ── Static AB test data (kept as-is since no AB test API) ── */
 const abTestData: { control: ABPanel; variant: ABPanel } = {
   control: {
     label: "Control",
@@ -112,13 +105,13 @@ const tabList = [
 const statusColors: Record<string, { color: string; bg: string }> = {
   active: { color: "#22C55E", bg: "#22C55E20" },
   archived: { color: "#55556A", bg: "#55556A20" },
-  testing: { color: "#FBBF24", bg: "#FBBF2420" },
+  draft: { color: "#FBBF24", bg: "#FBBF2420" },
 };
 
 const statusLabels: Record<string, string> = {
   active: "生产中",
   archived: "已归档",
-  testing: "测试中",
+  draft: "草稿",
 };
 
 interface PromptPageProps {
@@ -127,14 +120,82 @@ interface PromptPageProps {
 
 export default function PromptPage({ toast }: PromptPageProps) {
   const [tab, setTab] = useState("editor");
-  const [layers, setLayers] = useState(initialLayers);
+  const [layers, setLayers] = useState(defaultLayers);
   const [abTestRunning, setAbTestRunning] = useState(true);
 
+  /* ── API state ── */
+  const [versions, setVersions] = useState<PromptVersion[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchVersions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/admin/prompts");
+      if (!res.ok) throw new Error("Failed to fetch prompts");
+      const data: PromptVersion[] = await res.json();
+      setVersions(data);
+    } catch (err) {
+      console.error(err);
+      toast("加载 Prompt 版本失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchVersions();
+  }, [fetchVersions]);
+
+  /* ── Handlers ── */
   const handleLayerChange = (id: string, value: string) => {
     setLayers((prev) =>
       prev.map((l) => (l.id === id ? { ...l, value } : l))
     );
   };
+
+  const handleSaveNewVersion = async () => {
+    try {
+      const res = await fetch("/api/admin/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layers }),
+      });
+      if (!res.ok) throw new Error("Failed to create prompt version");
+      toast("新版本已保存");
+      fetchVersions();
+    } catch (err) {
+      console.error(err);
+      toast("保存版本失败");
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, status: string) => {
+    try {
+      const res = await fetch("/api/admin/prompts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      if (!res.ok) throw new Error("Failed to update prompt");
+      toast("状态已更新");
+      fetchVersions();
+    } catch (err) {
+      console.error(err);
+      toast("更新状态失败");
+    }
+  };
+
+  /* ── Loading skeleton ── */
+  const LoadingSkeleton = () => (
+    <div className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4 animate-pulse">
+          <div className="h-4 bg-[#27272F] rounded w-1/3 mb-3" />
+          <div className="h-3 bg-[#27272F] rounded w-2/3" />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -142,7 +203,7 @@ export default function PromptPage({ toast }: PromptPageProps) {
       <div className="flex items-center justify-between">
         <h2 className="text-[16px] font-bold text-[#EAEAEF]">Prompt 工作室</h2>
         <button
-          onClick={() => toast("新版本已保存")}
+          onClick={handleSaveNewVersion}
           className="px-3 py-1.5 bg-[#3B82F6] rounded-lg text-[11px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer"
         >
           保存新版本
@@ -199,55 +260,68 @@ export default function PromptPage({ toast }: PromptPageProps) {
 
       {/* ── 版本历史 tab ── */}
       {tab === "versions" && (
-        <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
-          <table className="w-full" style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr className="border-b border-[#2A2A35]">
-                {["版本", "创建者", "创建时间", "AB测试", "状态"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {versions.map((v) => {
-                const sc = statusColors[v.status] || { color: "#8B8B99", bg: "#2A2A35" };
-                return (
-                  <tr key={v.version} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
-                    <td className="px-4 py-3 text-[12px] font-mono font-semibold text-[#EAEAEF]">{v.version}</td>
-                    <td className="px-4 py-3 text-[12px] text-[#8B8B99]">{v.creator}</td>
-                    <td className="px-4 py-3 text-[11px] text-[#55556A]">{v.createdAt}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`text-[11px] font-medium ${
-                          v.abTest === "进行中"
-                            ? "text-[#FBBF24]"
-                            : v.abTest === "已完成"
-                            ? "text-[#22C55E]"
-                            : "text-[#55556A]"
-                        }`}
+        loading ? <LoadingSkeleton /> : (
+          <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
+            {versions.length === 0 ? (
+              <div className="px-4 py-8 text-center text-[13px] text-[#55556A]">暂无版本记录</div>
+            ) : (
+              <table className="w-full" style={{ borderCollapse: "collapse" }}>
+                <thead>
+                  <tr className="border-b border-[#2A2A35]">
+                    {["版本", "变更说明", "创建时间", "状态", "操作"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
                       >
-                        {v.abTest}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
-                        style={{ color: sc.color, backgroundColor: sc.bg }}
-                      >
-                        {statusLabels[v.status]}
-                      </span>
-                    </td>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {versions.map((v) => {
+                    const sc = statusColors[v.status] || { color: "#8B8B99", bg: "#2A2A35" };
+                    return (
+                      <tr key={v.id} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
+                        <td className="px-4 py-3 text-[12px] font-mono font-semibold text-[#EAEAEF]">{v.version}</td>
+                        <td className="px-4 py-3 text-[12px] text-[#8B8B99] max-w-[260px] truncate">{v.changes}</td>
+                        <td className="px-4 py-3 text-[11px] text-[#55556A]">{v.createdAt}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                            style={{ color: sc.color, backgroundColor: sc.bg }}
+                          >
+                            {statusLabels[v.status] || v.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {v.status === "draft" && (
+                              <button
+                                onClick={() => handleUpdateStatus(v.id, "active")}
+                                className="px-2 py-1 rounded text-[10px] font-medium text-[#22C55E] bg-[#22C55E20] hover:bg-[#22C55E30] transition-colors cursor-pointer"
+                              >
+                                激活
+                              </button>
+                            )}
+                            {v.status === "active" && (
+                              <button
+                                onClick={() => handleUpdateStatus(v.id, "archived")}
+                                className="px-2 py-1 rounded text-[10px] font-medium text-[#55556A] bg-[#55556A20] hover:bg-[#55556A30] transition-colors cursor-pointer"
+                              >
+                                归档
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )
       )}
 
       {/* ── AB 测试 tab ── */}

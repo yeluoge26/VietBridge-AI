@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
+import { createKnowledgeSchema, updateKnowledgeSchema } from "@/lib/validators/admin";
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -28,15 +29,21 @@ export async function POST(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const body = await req.json();
+  const raw = await req.json();
+  const parsed = createKnowledgeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "参数错误", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const body = parsed.data;
+
   const entry = await prisma.knowledgeEntry.create({
     data: {
       category: body.category,
       key: body.key,
       valueZh: body.valueZh || body.value || "",
-      valueVi: body.valueVi || "",
-      source: body.source || "",
-      confidence: body.confidence ?? 0.9,
+      valueVi: body.valueVi,
+      source: body.source,
+      confidence: body.confidence,
     },
   });
   return NextResponse.json(entry, { status: 201 });
@@ -46,8 +53,12 @@ export async function PUT(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const body = await req.json();
-  if (!body.id) return NextResponse.json({ error: "缺少ID" }, { status: 400 });
+  const raw = await req.json();
+  const parsed = updateKnowledgeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "参数错误", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const body = parsed.data;
 
   const entry = await prisma.knowledgeEntry.update({
     where: { id: body.id },

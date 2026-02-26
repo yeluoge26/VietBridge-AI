@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useCallback } from "react";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 interface InputBarProps {
   value: string;
@@ -8,6 +9,7 @@ interface InputBarProps {
   onSend: () => void;
   loading: boolean;
   taskColor: string;
+  voiceLang?: string;
 }
 
 export default function InputBar({
@@ -16,8 +18,21 @@ export default function InputBar({
   onSend,
   loading,
   taskColor,
+  voiceLang = "zh-CN",
 }: InputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleVoiceResult = useCallback(
+    (text: string) => {
+      onChange(value + text);
+    },
+    [value, onChange]
+  );
+
+  const { listening, supported, interim, toggle } = useVoiceInput({
+    lang: voiceLang,
+    onResult: handleVoiceResult,
+  });
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -40,15 +55,36 @@ export default function InputBar({
   };
 
   const hasText = value.trim().length > 0;
+  const displayValue = listening && interim ? value + interim : value;
 
   return (
     <div className="border-t border-[#EDEDED] bg-white px-3 py-2 pb-[calc(8px+env(safe-area-inset-bottom))]">
+      {/* Voice listening indicator */}
+      {listening && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-1.5">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+          </span>
+          <span className="text-xs text-red-600">
+            {interim ? interim : "正在聆听..."}
+          </span>
+          <button
+            type="button"
+            onClick={toggle}
+            className="ml-auto text-xs font-medium text-red-600 hover:text-red-800"
+          >
+            停止
+          </button>
+        </div>
+      )}
+
       <div className="flex items-end gap-2">
         {/* Input container with mic button inside */}
         <div className="relative flex-1">
           <textarea
             ref={textareaRef}
-            value={value}
+            value={displayValue}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入中文或越南语..."
@@ -57,27 +93,40 @@ export default function InputBar({
             style={{ minHeight: "38px", maxHeight: "110px", fontFamily: "'DM Sans', 'Noto Sans SC', sans-serif" }}
           />
           {/* Mic button inside textarea */}
-          <button
-            type="button"
-            className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full text-[#999] transition-colors hover:bg-[#EDEDED] hover:text-[#666]"
-            aria-label="语音输入"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {supported && (
+            <button
+              type="button"
+              onClick={toggle}
+              className={`absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full transition-all ${
+                listening
+                  ? "bg-red-500 text-white scale-110"
+                  : "text-[#999] hover:bg-[#EDEDED] hover:text-[#666]"
+              }`}
+              aria-label={listening ? "停止语音输入" : "语音输入"}
             >
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
-            </svg>
-          </button>
+              {listening ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Send button */}

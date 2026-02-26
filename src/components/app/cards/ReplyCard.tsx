@@ -25,6 +25,8 @@ interface ReplyCardProps {
   proactiveWarnings?: Array<{ type: string; text: string }>;
   hasContext?: boolean;
   onCopy: (text: string) => void;
+  onSpeak?: (text: string, lang?: "vi-VN" | "zh-CN") => void;
+  onShare?: (text: string) => void;
 }
 
 const replyStyleConfig: Record<
@@ -61,6 +63,8 @@ export default function ReplyCard({
   proactiveWarnings,
   hasContext,
   onCopy,
+  onSpeak,
+  onShare,
 }: ReplyCardProps) {
   // Find the reply closest to the user's tone setting
   const closestReply = data.replies.reduce((prev, curr) =>
@@ -113,34 +117,54 @@ export default function ReplyCard({
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onCopy(reply.text)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white"
-                    aria-label={`复制${reply.style}回复`}
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className={config.labelColor}
+                  <div className="flex items-center gap-1">
+                    {/* Play button */}
+                    <button
+                      type="button"
+                      onClick={() => onSpeak?.(reply.text, "vi-VN")}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white"
+                      aria-label="播放"
                     >
-                      <rect
-                        x="9"
-                        y="9"
-                        width="13"
-                        height="13"
-                        rx="2"
-                        ry="2"
-                      />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  </button>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={config.labelColor}>
+                        <polygon points="5,3 19,12 5,21" />
+                      </svg>
+                    </button>
+                    {/* Share button */}
+                    <button
+                      type="button"
+                      onClick={() => onShare?.(reply.text)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white"
+                      aria-label="分享"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={config.labelColor}>
+                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                        <polyline points="16 6 12 2 8 6" />
+                        <line x1="12" y1="2" x2="12" y2="15" />
+                      </svg>
+                    </button>
+                    {/* Copy button */}
+                    <button
+                      type="button"
+                      onClick={() => onCopy(reply.text)}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white"
+                      aria-label={`复制${reply.style}回复`}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={config.labelColor}
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 {/* Vietnamese text */}
                 <p className="text-sm font-medium text-[#111] leading-relaxed">
