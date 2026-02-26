@@ -42,7 +42,7 @@ export default function LandingNav() {
             </a>
           ))}
           <Button size="sm" asChild>
-            <Link href="/register">免费开始</Link>
+            <Link href="/app">立即使用</Link>
           </Button>
         </div>
 
@@ -77,7 +77,7 @@ export default function LandingNav() {
                 </a>
               ))}
               <Button className="mt-4 w-full" asChild>
-                <Link href="/register">免费开始</Link>
+                <Link href="/app">立即使用</Link>
               </Button>
             </div>
           </SheetContent>

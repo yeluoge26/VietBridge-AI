@@ -12,23 +12,32 @@ interface PlanStat {
   limit: string;
 }
 
+interface ModelUsageItem {
+  model: string;
+  calls: number;
+  tokens: number;
+  cost: number;
+  planType: "FREE" | "PRO" | "API";
+}
+
 interface RevenueData {
   totalUsers: number;
   paidUsers: number;
   freeUsers: number;
   planBreakdown: PlanStat[];
+  modelUsageByPlan?: ModelUsageItem[];
 }
 
 const PLAN_CONFIG: Record<string, { color: string; label: string; price: string; limit: string }> = {
-  FREE: { color: "#8B8B99", label: "免费版", price: "¥0", limit: "50次/天" },
+  FREE: { color: "#8B8B99", label: "免费版", price: "¥0", limit: "10次/天" },
   PRO: { color: "#3B82F6", label: "专业版", price: "¥49/月", limit: "999次/天" },
-  ENTERPRISE: { color: "#A855F7", label: "企业版", price: "¥299/月", limit: "无限" },
   API: { color: "#FBBF24", label: "API", price: "按量", limit: "无限" },
 };
 
 export default function BillPage() {
   const [data, setData] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [usageTab, setUsageTab] = useState<"FREE" | "PAID">("FREE");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -59,7 +68,6 @@ export default function BillPage() {
   const planBreakdown = data?.planBreakdown || [];
   const estimatedMRR = planBreakdown.reduce((sum, p) => {
     if (p.plan === "PRO") return sum + p.count * 49;
-    if (p.plan === "ENTERPRISE") return sum + p.count * 299;
     return sum;
   }, 0);
 
@@ -177,6 +185,89 @@ export default function BillPage() {
           </div>
         </div>
       )}
+
+      {/* ── 模型使用量分布 ── */}
+      {(() => {
+        const allUsage = data?.modelUsageByPlan || [];
+        const filtered = usageTab === "FREE"
+          ? allUsage.filter((u) => u.planType === "FREE")
+          : allUsage.filter((u) => u.planType === "PRO" || u.planType === "API");
+        const totalCalls = filtered.reduce((s, u) => s + u.calls, 0);
+
+        return (
+          <div>
+            <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-3">模型使用量分布</h3>
+            {/* Tab buttons */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setUsageTab("FREE")}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
+                  usageTab === "FREE"
+                    ? "bg-[#3B82F6] text-white"
+                    : "bg-[#2A2A35] text-[#8B8B99] hover:bg-[#333340]"
+                }`}
+              >
+                免费用户
+              </button>
+              <button
+                onClick={() => setUsageTab("PAID")}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer ${
+                  usageTab === "PAID"
+                    ? "bg-[#3B82F6] text-white"
+                    : "bg-[#2A2A35] text-[#8B8B99] hover:bg-[#333340]"
+                }`}
+              >
+                付费用户
+              </button>
+            </div>
+
+            <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
+              {filtered.length === 0 ? (
+                <div className="px-4 py-8 text-center text-[13px] text-[#55556A]">暂无数据</div>
+              ) : (
+                <table className="w-full" style={{ borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr className="border-b border-[#2A2A35]">
+                      {["模型", "调用次数", "Tokens", "成本($)", "占比"].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((u) => {
+                      const pct = totalCalls > 0 ? Math.round((u.calls / totalCalls) * 100) : 0;
+                      return (
+                        <tr key={u.model} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
+                          <td className="px-4 py-3 text-[12px] text-[#EAEAEF] font-mono">{u.model}</td>
+                          <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">{u.calls.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-[12px] text-[#8B8B99]">{u.tokens.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-[12px] text-[#FBBF24]">${u.cost.toFixed(2)}</td>
+                          <td className="px-4 py-3 w-[180px]">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-[#2A2A35] rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-[#3B82F6] to-[#A855F7] rounded-full"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-[#55556A] w-8 text-right">{pct}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

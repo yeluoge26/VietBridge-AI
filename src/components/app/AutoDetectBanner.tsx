@@ -25,7 +25,7 @@ const sceneLabels: Record<string, string> = {
   restaurant: "餐厅",
   rent: "租房",
   hospital: "医院",
-  repair: "装修",
+  housekeeping: "家政",
 };
 
 export default function AutoDetectBanner({

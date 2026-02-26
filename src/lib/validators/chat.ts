@@ -18,7 +18,7 @@ export const chatSchema = z.object({
       "restaurant",
       "rent",
       "hospital",
-      "repair",
+      "housekeeping",
     ])
     .optional(),
   tone: z.number().min(0).max(100).optional().default(50),

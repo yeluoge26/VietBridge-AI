@@ -13,7 +13,7 @@ const SCENE_CATEGORIES: Record<string, string[]> = {
   rent: ["rent_rules", "contract_clauses", "scam_patterns"],
   business: ["contract_clauses", "scam_patterns"],
   hospital: ["scam_patterns"],
-  repair: ["scam_patterns"],
+  housekeeping: ["scam_patterns"],
   general: ["danang_prices", "rent_rules", "scam_patterns"],
   couple: [],
   staff: [],

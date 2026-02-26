@@ -1,18 +1,18 @@
 // ============================================================================
 // VietBridge AI V2 — Usage Tracking & Quota Enforcement
-// Free: 50/day, Pro: 999/day, Enterprise: 9999/day, API: unlimited
+// Free/Guest: 10/day, Pro: 999/day, API: unlimited
 // ============================================================================
 
 import { prisma } from "./prisma";
+import { updateUserLevel } from "./user-level";
 
 // ---------------------------------------------------------------------------
 // Plan Limits (requests per day)
 // ---------------------------------------------------------------------------
 
 const PLAN_LIMITS: Record<string, number> = {
-  FREE: 50,
+  FREE: 10,
   PRO: 999,
-  ENTERPRISE: 9999,
   API: Infinity,
 };
 
@@ -85,7 +85,7 @@ export async function logUsage(params: {
         | "RESTAURANT"
         | "RENT"
         | "HOSPITAL"
-        | "REPAIR",
+        | "HOUSEKEEPING",
       modelUsed: params.modelUsed,
       tokensPrompt: params.tokensPrompt,
       tokensCompletion: params.tokensCompletion,
@@ -96,4 +96,7 @@ export async function logUsage(params: {
       status: params.status ?? "ok",
     },
   });
+
+  // Update user level after logging usage
+  await updateUserLevel(params.userId).catch(() => {});
 }

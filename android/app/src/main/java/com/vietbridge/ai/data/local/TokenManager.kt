@@ -22,12 +22,31 @@ class TokenManager(context: Context) {
         get() = prefs.getString(KEY_USER, null)
         set(value) = prefs.edit().putString(KEY_USER, value).apply()
 
+    /** Guest UUID — generated once, persisted across sessions */
+    val guestId: String
+        get() {
+            var id = prefs.getString(KEY_GUEST_ID, null)
+            if (id == null) {
+                id = java.util.UUID.randomUUID().toString()
+                prefs.edit().putString(KEY_GUEST_ID, id).apply()
+            }
+            return id
+        }
+
+    val isAuthenticated: Boolean get() = token != null
+
     fun clear() {
+        val savedGuestId = prefs.getString(KEY_GUEST_ID, null)
         prefs.edit().clear().apply()
+        // Preserve guest ID across sign-outs
+        if (savedGuestId != null) {
+            prefs.edit().putString(KEY_GUEST_ID, savedGuestId).apply()
+        }
     }
 
     companion object {
         private const val KEY_TOKEN = "auth_token"
         private const val KEY_USER = "user_json"
+        private const val KEY_GUEST_ID = "guest_id"
     }
 }

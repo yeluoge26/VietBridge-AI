@@ -13,15 +13,16 @@ android {
         applicationId = "com.vietbridge.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         buildConfigField("String", "BASE_URL", "\"https://vietbridge.ai\"")
     }
 
     buildTypes {
         debug {
-            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:3000\"")
+            // Real device on same WiFi: use local IP; Emulator: use 10.0.2.2
+            buildConfigField("String", "BASE_URL", "\"http://192.168.1.50:3000\"")
         }
         release {
             isMinifyEnabled = true
@@ -40,6 +41,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    applicationVariants.all {
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            output.outputFileName = "VietBridge-AI-v${versionName}-${buildType.name}.apk"
+        }
     }
 }
 

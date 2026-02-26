@@ -11,6 +11,8 @@ import { chatSchema } from "@/lib/validators/chat";
 import { checkRateLimit, checkApiKeyRateLimit } from "@/lib/rate-limit";
 import { checkUsageQuota, logUsage } from "@/lib/usage";
 import { authenticateApiKey } from "@/lib/api-key-auth";
+import { getGuestId } from "@/lib/guest-id";
+import { checkGuestQuota, incrementGuestUsage } from "@/lib/guest-usage";
 import {
   checkMonthlyCostLimit,
   checkGlobalCostLimit,
@@ -50,16 +52,17 @@ const SCENE_MAP: Record<string, string> = {
   restaurant: "RESTAURANT",
   rent: "RENT",
   hospital: "HOSPITAL",
-  repair: "REPAIR",
+  housekeeping: "HOUSEKEEPING",
 };
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    // ── 1. Auth (API Key, Mobile Bearer, or Session) ─────────────────────
+    // ── 1. Auth (API Key, Mobile Bearer, Session, or Guest) ──────────────
     let userId: string;
     let userRole: string;
+    let isGuest = false;
     let apiKeyId: string | undefined;
     let apiKeyPrefix: string | undefined;
 
@@ -78,11 +81,19 @@ export async function POST(req: NextRequest) {
     } else {
       // Try mobile Bearer token, then fall back to web session
       const authUser = await getAuthUser(req);
-      if (!authUser?.id) {
-        return NextResponse.json({ error: "未登录" }, { status: 401 });
+      if (authUser?.id) {
+        userId = authUser.id;
+        userRole = authUser.role;
+      } else {
+        // Guest fallback — anonymous usage with free tier
+        const guestId = getGuestId(req);
+        if (!guestId) {
+          return NextResponse.json({ error: "未登录" }, { status: 401 });
+        }
+        userId = guestId;
+        userRole = "guest";
+        isGuest = true;
       }
-      userId = authUser.id;
-      userRole = authUser.role;
     }
 
     // ── 2. Validate ────────────────────────────────────────────────────────
@@ -129,28 +140,41 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 4. Quota check ─────────────────────────────────────────────────────
-    const quota = await checkUsageQuota(userId);
-    if (!quota.allowed) {
-      return NextResponse.json(
-        { error: "今日额度已用完", used: quota.used, limit: quota.limit, upgrade: true },
-        { status: 403 }
-      );
+    if (isGuest) {
+      const guestQuota = await checkGuestQuota(userId);
+      if (!guestQuota.allowed) {
+        return NextResponse.json(
+          { error: "今日额度已用完，注册后可获得更多额度", used: guestQuota.used, limit: guestQuota.limit, upgrade: true },
+          { status: 403 }
+        );
+      }
+    } else {
+      const quota = await checkUsageQuota(userId);
+      if (!quota.allowed) {
+        return NextResponse.json(
+          { error: "今日额度已用完", used: quota.used, limit: quota.limit, upgrade: true },
+          { status: 403 }
+        );
+      }
     }
 
-    // ── 4b. Monthly cost limit ──────────────────────────────────────────
-    const globalCost = await checkGlobalCostLimit();
-    if (!globalCost.allowed) {
-      return NextResponse.json(
-        { error: globalCost.message },
-        { status: 503 }
-      );
-    }
-    const costCheck: CostCheckResult = await checkMonthlyCostLimit(userId);
-    if (!costCheck.allowed) {
-      return NextResponse.json(
-        { error: costCheck.upgradeMessage, upgrade: true },
-        { status: 403 }
-      );
+    // ── 4b. Monthly cost limit (skip for guests — Redis quota is sufficient) ──
+    let costCheck: CostCheckResult = { allowed: true, currentCost: 0, limit: 1, percentUsed: 0, shouldDowngrade: false };
+    if (!isGuest) {
+      const globalCost = await checkGlobalCostLimit();
+      if (!globalCost.allowed) {
+        return NextResponse.json(
+          { error: globalCost.message },
+          { status: 503 }
+        );
+      }
+      costCheck = await checkMonthlyCostLimit(userId);
+      if (!costCheck.allowed) {
+        return NextResponse.json(
+          { error: costCheck.upgradeMessage, upgrade: true },
+          { status: 403 }
+        );
+      }
     }
 
     // ── 5. Intent detection ────────────────────────────────────────────────
@@ -174,7 +198,7 @@ export async function POST(req: NextRequest) {
     const hasRAGHit = kbHits.length > 0;
 
     // ── 6. Model routing ───────────────────────────────────────────────────
-    let isPro = userRole === "pro" || userRole === "admin";
+    let isPro = !isGuest && (userRole === "pro" || userRole === "admin");
     let downgradeWarning: string | undefined;
     if (costCheck.shouldDowngrade && isPro) {
       isPro = false;
@@ -189,7 +213,7 @@ export async function POST(req: NextRequest) {
     );
 
     // ── 6c. Prompt version (active or AB test) ─────────────────────────────
-    const abResult = await getABPromptOverride(userId);
+    const abResult = isGuest ? { override: null, abGroup: null } : await getABPromptOverride(userId);
 
     // ── 7. Build 7-layer prompt ────────────────────────────────────────────
     const memory = {
@@ -226,28 +250,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 9. Ensure/create conversation record ─────────────────────────────
+    // ── 9. Ensure/create conversation record (skip for guests) ────────────
     let convId = conversationId;
-    if (!convId) {
-      const conversation = await prisma.conversation.create({
+    if (!isGuest) {
+      if (!convId) {
+        const conversation = await prisma.conversation.create({
+          data: {
+            userId,
+            taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
+            sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "HOUSEKEEPING",
+            title: input.substring(0, 50),
+          },
+        });
+        convId = conversation.id;
+      }
+
+      // Save user message
+      await prisma.message.create({
         data: {
-          userId,
-          taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
-          sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
-          title: input.substring(0, 50),
+          conversationId: convId,
+          role: "user",
+          content: input,
         },
       });
-      convId = conversation.id;
     }
-
-    // Save user message
-    await prisma.message.create({
-      data: {
-        conversationId: convId,
-        role: "user",
-        content: input,
-      },
-    });
 
     // ── 10. Streaming vs Non-streaming ───────────────────────────────────
     if (stream) {
@@ -267,6 +293,7 @@ export async function POST(req: NextRequest) {
         intent,
         kbHits,
         hasRAGHit,
+        isGuest,
         costWarning: costCheck.warning,
         downgradeWarning,
         abGroup: abResult.abGroup || undefined,
@@ -306,56 +333,60 @@ export async function POST(req: NextRequest) {
       modelReason: llmResult.usedFallback ? `${model.reason} (fallback)` : model.reason,
     });
 
-    // Log usage
-    await logUsage({
-      userId,
-      taskType: task.toUpperCase(),
-      sceneType: scene.toUpperCase(),
-      modelUsed: actualModelUsed,
-      tokensPrompt,
-      tokensCompletion,
-      cost,
-      latency,
-      riskScore: (structuredResponse.data as { score?: number })?.score || 0,
-      ragHit: hasRAGHit,
-      status: "ok",
-    });
-
-    // Save assistant message
-    await prisma.message.create({
-      data: {
-        conversationId: convId,
-        role: "assistant",
-        content: output,
-        metadata: structuredResponse.data as object,
+    // Log usage & persist
+    if (isGuest) {
+      await incrementGuestUsage(userId);
+    } else {
+      await logUsage({
+        userId,
+        taskType: task.toUpperCase(),
+        sceneType: scene.toUpperCase(),
         modelUsed: actualModelUsed,
         tokensPrompt,
         tokensCompletion,
         cost,
         latency,
-      },
-    });
+        riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+        ragHit: hasRAGHit,
+        status: "ok",
+      });
 
-    // Log to LLM audit
-    const logData = {
-      userId,
-      taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
-      sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
-      modelUsed: actualModelUsed,
-      input: sanitizeForLog(input),
-      promptLayers: JSON.stringify(promptResult.layers),
-      output,
-      tokensPrompt,
-      tokensCompletion,
-      cost,
-      latency,
-      riskScore: (structuredResponse.data as { score?: number })?.score || 0,
-      ragHit: hasRAGHit,
-      status: "ok",
-      entryHash: "",
-    };
-    logData.entryHash = computeEntryHash(logData);
-    await prisma.llmLog.create({ data: logData });
+      // Save assistant message
+      await prisma.message.create({
+        data: {
+          conversationId: convId!,
+          role: "assistant",
+          content: output,
+          metadata: structuredResponse.data as object,
+          modelUsed: actualModelUsed,
+          tokensPrompt,
+          tokensCompletion,
+          cost,
+          latency,
+        },
+      });
+
+      // Log to LLM audit
+      const logData = {
+        userId,
+        taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
+        sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "HOUSEKEEPING",
+        modelUsed: actualModelUsed,
+        input: sanitizeForLog(input),
+        promptLayers: JSON.stringify(promptResult.layers),
+        output,
+        tokensPrompt,
+        tokensCompletion,
+        cost,
+        latency,
+        riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+        ragHit: hasRAGHit,
+        status: "ok",
+        entryHash: "",
+      };
+      logData.entryHash = computeEntryHash(logData);
+      await prisma.llmLog.create({ data: logData });
+    }
 
     // Inject KB hits into risk data if applicable
     if (task === "risk" && structuredResponse.data && kbHits.length > 0) {
@@ -407,12 +438,13 @@ interface StreamParams {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   conversationHistory: any[];
   userId: string;
-  convId: string;
+  convId: string | undefined;
   startTime: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   intent: any;
   kbHits: KBHit[];
   hasRAGHit: boolean;
+  isGuest: boolean;
   costWarning?: string;
   downgradeWarning?: string;
   abGroup?: string;
@@ -437,6 +469,7 @@ function handleStreamingResponse(params: StreamParams): Response {
     intent,
     kbHits,
     hasRAGHit,
+    isGuest,
     costWarning,
     downgradeWarning,
     abGroup,
@@ -523,42 +556,15 @@ function handleStreamingResponse(params: StreamParams): Response {
         );
 
         // Background: persist & log (non-blocking)
-        Promise.all([
-          logUsage({
-            userId,
-            taskType: task.toUpperCase(),
-            sceneType: scene.toUpperCase(),
-            modelUsed: actualModelUsed,
-            tokensPrompt,
-            tokensCompletion,
-            cost,
-            latency,
-            riskScore: (structuredResponse.data as { score?: number })?.score || 0,
-            ragHit: hasRAGHit,
-            status: "ok",
-          }),
-          prisma.message.create({
-            data: {
-              conversationId: convId,
-              role: "assistant",
-              content: fullOutput,
-              metadata: structuredResponse.data as object,
-              modelUsed: actualModelUsed,
-              tokensPrompt,
-              tokensCompletion,
-              cost,
-              latency,
-            },
-          }),
-          (() => {
-            const streamLogData = {
+        if (isGuest) {
+          incrementGuestUsage(userId).catch((err) => console.error("[Guest Usage Error]", err));
+        } else {
+          Promise.all([
+            logUsage({
               userId,
-              taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
-              sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
+              taskType: task.toUpperCase(),
+              sceneType: scene.toUpperCase(),
               modelUsed: actualModelUsed,
-              input: sanitizeForLog(input),
-              promptLayers: JSON.stringify(promptResult.layers),
-              output: fullOutput,
               tokensPrompt,
               tokensCompletion,
               cost,
@@ -566,12 +572,43 @@ function handleStreamingResponse(params: StreamParams): Response {
               riskScore: (structuredResponse.data as { score?: number })?.score || 0,
               ragHit: hasRAGHit,
               status: "ok",
-              entryHash: "",
-            };
-            streamLogData.entryHash = computeEntryHash(streamLogData);
-            return prisma.llmLog.create({ data: streamLogData });
-          })(),
-        ]).catch((err) => console.error("[Chat Persist Error]", err));
+            }),
+            convId ? prisma.message.create({
+              data: {
+                conversationId: convId,
+                role: "assistant",
+                content: fullOutput,
+                metadata: structuredResponse.data as object,
+                modelUsed: actualModelUsed,
+                tokensPrompt,
+                tokensCompletion,
+                cost,
+                latency,
+              },
+            }) : Promise.resolve(),
+            (() => {
+              const streamLogData = {
+                userId,
+                taskType: TASK_MAP[task] as "TRANSLATION" | "REPLY" | "RISK" | "LEARN",
+                sceneType: SCENE_MAP[scene] as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "HOUSEKEEPING",
+                modelUsed: actualModelUsed,
+                input: sanitizeForLog(input),
+                promptLayers: JSON.stringify(promptResult.layers),
+                output: fullOutput,
+                tokensPrompt,
+                tokensCompletion,
+                cost,
+                latency,
+                riskScore: (structuredResponse.data as { score?: number })?.score || 0,
+                ragHit: hasRAGHit,
+                status: "ok",
+                entryHash: "",
+              };
+              streamLogData.entryHash = computeEntryHash(streamLogData);
+              return prisma.llmLog.create({ data: streamLogData });
+            })(),
+          ]).catch((err) => console.error("[Chat Persist Error]", err));
+        }
 
         controller.close();
       } catch (error) {

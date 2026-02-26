@@ -3,115 +3,64 @@
 import { useState, useEffect, useCallback } from "react";
 
 /* ── Types ── */
-interface PromptLayer {
-  id: string;
-  label: string;
-  description: string;
-  value: string;
-}
-
 interface PromptVersion {
   id: string;
+  task: string;
+  scene: string;
   version: string;
-  changes: string;
-  status: "active" | "draft" | "archived";
+  systemPrompt: string;
+  taskPrompt: string;
+  scenePrompt: string;
+  status: string;
+  abGroup: string | null;
   createdAt: string;
 }
 
-interface ABPanel {
-  label: string;
-  version: string;
-  sampleSize: number;
-  responseQuality: number;
-  satisfaction: number;
-  avgLatency: string;
-  status: string;
-}
-
-/* ── Default layers (used when editor is empty) ── */
-const defaultLayers: PromptLayer[] = [
-  {
-    id: "system_persona",
-    label: "System Persona",
-    description: "系统角色设定",
-    value: "你是 VietBridge AI，一个专业的越南-中国跨境商务助手。你精通越南语和中文，了解越南的商业环境、法律法规和文化习俗。始终保持专业、准确、有礼貌的态度。",
-  },
-  {
-    id: "user_memory",
-    label: "User Memory",
-    description: "用户记忆层",
-    value: "用户偏好: {preferences}\n历史交互摘要: {history_summary}\n常用场景: {frequent_scenes}\n语言偏好: {language_pref}",
-  },
-  {
-    id: "task_instructions",
-    label: "Task Instructions",
-    description: "任务指令层",
-    value: "当前任务: {task_type}\n请根据以下规则处理用户请求:\n1. 翻译任务需保持商务语境准确性\n2. 风险检测需标注置信度\n3. 回复生成需符合越南商务礼仪",
-  },
-  {
-    id: "scene_rules",
-    label: "Scene Rules",
-    description: "场景规则层",
-    value: "场景: {scene}\n规则:\n- 电商场景: 使用通俗易懂的表达\n- 合同场景: 使用法律术语,保持严谨\n- 客服场景: 保持友善专业的语气",
-  },
-  {
-    id: "tone_control",
-    label: "Tone Control",
-    description: "语气控制层",
-    value: "语气级别: {tone_level}\n正式度: 商务正式\n情感倾向: 中性偏友好\n文化敏感度: 高",
-  },
-  {
-    id: "context",
-    label: "Context",
-    description: "上下文注入层",
-    value: "RAG 检索结果: {rag_results}\n相关知识条目: {knowledge_entries}\n历史对话: {conversation_history}",
-  },
-  {
-    id: "user_input",
-    label: "User Input",
-    description: "用户输入层",
-    value: "{user_message}",
-  },
+/* ── 7-Layer Pipeline Definition ── */
+const PIPELINE_LAYERS = [
+  { num: 1, key: "system",    label: "系统层",   en: "System",    color: "#3B82F6", desc: "核心身份 & 能力定义", editable: true },
+  { num: 2, key: "memory",    label: "记忆层",   en: "Memory",    color: "#8B5CF6", desc: "用户偏好 / 身份 / 历史", editable: false },
+  { num: 3, key: "task",      label: "任务层",   en: "Task",      color: "#EC4899", desc: "翻译/回复/风险/教学/扫描", editable: true },
+  { num: 4, key: "scene",     label: "场景层",   en: "Scene",     color: "#F59E0B", desc: "人称/语气词/正式度/特殊规则", editable: true },
+  { num: 5, key: "tone",      label: "语气层",   en: "Tone",      color: "#10B981", desc: "1-10 级语气滑块控制", editable: false },
+  { num: 6, key: "knowledge", label: "知识层",   en: "Knowledge", color: "#06B6D4", desc: "RAG 知识库命中注入", editable: false },
+  { num: 7, key: "context",   label: "上下文层", en: "Context",   color: "#6366F1", desc: "最近 10 条对话历史", editable: false },
 ];
 
-/* ── Static AB test data (kept as-is since no AB test API) ── */
-const abTestData: { control: ABPanel; variant: ABPanel } = {
-  control: {
-    label: "Control",
-    version: "v1.3",
-    sampleSize: 2450,
-    responseQuality: 82.5,
-    satisfaction: 78.3,
-    avgLatency: "420ms",
-    status: "运行中",
-  },
-  variant: {
-    label: "Variant",
-    version: "v1.4",
-    sampleSize: 2380,
-    responseQuality: 86.1,
-    satisfaction: 83.7,
-    avgLatency: "390ms",
-    status: "运行中",
-  },
-};
-
-const tabList = [
-  { id: "editor", label: "编辑器" },
-  { id: "versions", label: "版本历史" },
-  { id: "abtest", label: "AB 测试" },
+/* ── Mappings ── */
+const TASK_OPTIONS = [
+  { value: "", label: "全部任务" },
+  { value: "TRANSLATION", label: "翻译" },
+  { value: "REPLY", label: "回复建议" },
+  { value: "RISK", label: "风险分析" },
+  { value: "LEARN", label: "教学" },
+  { value: "SCAN", label: "扫描" },
 ];
 
-const statusColors: Record<string, { color: string; bg: string }> = {
-  active: { color: "#22C55E", bg: "#22C55E20" },
-  archived: { color: "#55556A", bg: "#55556A20" },
-  draft: { color: "#FBBF24", bg: "#FBBF2420" },
-};
+const SCENE_OPTIONS = [
+  { value: "", label: "全部场景" },
+  { value: "GENERAL", label: "通用" },
+  { value: "BUSINESS", label: "商务" },
+  { value: "STAFF", label: "员工" },
+  { value: "COUPLE", label: "情侣" },
+  { value: "RENT", label: "租房" },
+  { value: "RESTAURANT", label: "餐厅" },
+  { value: "HOSPITAL", label: "医院" },
+  { value: "HOUSEKEEPING", label: "家政" },
+];
 
-const statusLabels: Record<string, string> = {
-  active: "生产中",
-  archived: "已归档",
-  draft: "草稿",
+const TASK_CN: Record<string, string> = {
+  TRANSLATION: "翻译", REPLY: "回复", RISK: "风险", LEARN: "教学", SCAN: "扫描",
+};
+const TASK_EN: Record<string, string> = {
+  TRANSLATION: "translate", REPLY: "reply", RISK: "risk", LEARN: "learn", SCAN: "scan",
+};
+const SCENE_CN: Record<string, string> = {
+  GENERAL: "通用", BUSINESS: "商务", STAFF: "员工", COUPLE: "情侣",
+  RENT: "租房", RESTAURANT: "餐厅", HOSPITAL: "医院", HOUSEKEEPING: "家政",
+};
+const TASK_COLOR: Record<string, string> = {
+  TRANSLATION: "#3B82F6", REPLY: "#A855F7", RISK: "#EF4444", LEARN: "#22C55E", SCAN: "#F59E0B",
 };
 
 interface PromptPageProps {
@@ -119,266 +68,447 @@ interface PromptPageProps {
 }
 
 export default function PromptPage({ toast }: PromptPageProps) {
-  const [tab, setTab] = useState("editor");
-  const [layers, setLayers] = useState(defaultLayers);
-  const [abTestRunning, setAbTestRunning] = useState(true);
-
-  /* ── API state ── */
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [taskFilter, setTaskFilter] = useState("");
+  const [sceneFilter, setSceneFilter] = useState("");
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [sceneOpen, setSceneOpen] = useState(false);
 
+  // Edit / create
+  const [editing, setEditing] = useState<PromptVersion | null>(null);
+  const [editSystem, setEditSystem] = useState("");
+  const [editTask, setEditTask] = useState("");
+  const [editScene, setEditScene] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editTab, setEditTab] = useState(0); // 0=编辑, 1=预览
+
+  const [showNew, setShowNew] = useState(false);
+  const [newTask, setNewTask] = useState("TRANSLATION");
+  const [newScene, setNewScene] = useState("GENERAL");
+  const [newVersion, setNewVersion] = useState("v1.0");
+  const [newSystem, setNewSystem] = useState("");
+  const [newTaskPrompt, setNewTaskPrompt] = useState("");
+  const [newScenePrompt, setNewScenePrompt] = useState("");
+
+  /* ── Fetch ── */
   const fetchVersions = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/prompts");
-      if (!res.ok) throw new Error("Failed to fetch prompts");
-      const data: PromptVersion[] = await res.json();
-      setVersions(data);
-    } catch (err) {
-      console.error(err);
-      toast("加载 Prompt 版本失败");
+      const params = new URLSearchParams();
+      if (taskFilter) params.set("task", taskFilter);
+      if (sceneFilter) params.set("scene", sceneFilter);
+      const res = await fetch(`/api/admin/prompts?${params}`);
+      if (!res.ok) throw new Error("Failed");
+      setVersions(await res.json());
+    } catch {
+      toast("加载失败");
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [taskFilter, sceneFilter, toast]);
+
+  useEffect(() => { fetchVersions(); }, [fetchVersions]);
 
   useEffect(() => {
-    fetchVersions();
-  }, [fetchVersions]);
+    const h = () => { setTaskOpen(false); setSceneOpen(false); };
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
+  }, []);
 
   /* ── Handlers ── */
-  const handleLayerChange = (id: string, value: string) => {
-    setLayers((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, value } : l))
-    );
+  const handleEdit = (v: PromptVersion) => {
+    setEditing(v);
+    setEditSystem(v.systemPrompt);
+    setEditTask(v.taskPrompt);
+    setEditScene(v.scenePrompt);
+    setEditTab(0);
   };
 
-  const handleSaveNewVersion = async () => {
-    try {
-      const res = await fetch("/api/admin/prompts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layers }),
-      });
-      if (!res.ok) throw new Error("Failed to create prompt version");
-      toast("新版本已保存");
-      fetchVersions();
-    } catch (err) {
-      console.error(err);
-      toast("保存版本失败");
-    }
-  };
-
-  const handleUpdateStatus = async (id: string, status: string) => {
+  const handleSave = async () => {
+    if (!editing) return;
+    setSaving(true);
     try {
       const res = await fetch("/api/admin/prompts", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id: editing.id, systemPrompt: editSystem, taskPrompt: editTask, scenePrompt: editScene }),
       });
-      if (!res.ok) throw new Error("Failed to update prompt");
-      toast("状态已更新");
+      if (!res.ok) throw new Error("Failed");
+      toast("保存成功");
+      setEditing(null);
       fetchVersions();
-    } catch (err) {
-      console.error(err);
-      toast("更新状态失败");
-    }
+    } catch { toast("保存失败"); }
+    finally { setSaving(false); }
   };
 
-  /* ── Loading skeleton ── */
-  const LoadingSkeleton = () => (
-    <div className="space-y-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4 animate-pulse">
-          <div className="h-4 bg-[#27272F] rounded w-1/3 mb-3" />
-          <div className="h-3 bg-[#27272F] rounded w-2/3" />
+  const handleToggleStatus = async (v: PromptVersion) => {
+    const s = v.status === "active" ? "archived" : "active";
+    try {
+      const res = await fetch("/api/admin/prompts", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: v.id, status: s }) });
+      if (!res.ok) throw new Error("Failed");
+      toast(s === "active" ? "已启用" : "已禁用");
+      fetchVersions();
+    } catch { toast("操作失败"); }
+  };
+
+  const handleDelete = async (v: PromptVersion) => {
+    if (!confirm(`确定删除 ${TASK_CN[v.task]} × ${SCENE_CN[v.scene]} ${v.version}？`)) return;
+    try {
+      const res = await fetch(`/api/admin/prompts?id=${v.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      toast("已删除");
+      fetchVersions();
+    } catch { toast("删除失败"); }
+  };
+
+  const handleCreate = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: newTask, scene: newScene, version: newVersion, systemPrompt: newSystem, taskPrompt: newTaskPrompt, scenePrompt: newScenePrompt, status: "draft" }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast("创建成功");
+      setShowNew(false);
+      setNewSystem(""); setNewTaskPrompt(""); setNewScenePrompt("");
+      fetchVersions();
+    } catch { toast("创建失败"); }
+    finally { setSaving(false); }
+  };
+
+  /* ── Build preview of assembled prompt ── */
+  const buildPreview = () => {
+    if (!editing) return "";
+    const taskLabel = TASK_CN[editing.task] || editing.task;
+    const sceneLabel = SCENE_CN[editing.scene] || editing.scene;
+    return [
+      `━━━ Layer 1: 系统层 (System) ━━━`,
+      editSystem || "(空)",
+      "",
+      `━━━ Layer 2: 记忆层 (Memory) ━━━  [运行时注入]`,
+      `用户信息：\n- 身份：在越华人\n- 所在城市：岘港\n- 偏好语气等级：5/10\n- 账户类型：{isPro ? "Pro会员" : "免费用户"}`,
+      "",
+      `━━━ Layer 3: 任务层 (Task) — ${taskLabel} ━━━`,
+      editTask || "(空)",
+      "",
+      `━━━ Layer 4: 场景层 (Scene) — ${sceneLabel} ━━━`,
+      editScene || "(空)",
+      "",
+      `━━━ Layer 5: 语气层 (Tone) ━━━  [运行时注入]`,
+      `语气等级：{tone}/10 - {toneLabel}\n{根据等级选择口语化/标准/正式表达}`,
+      "",
+      `━━━ Layer 6: 知识层 (Knowledge) ━━━  [RAG 自动注入]`,
+      `{knowledgeBase.search(userInput) → 匹配条目列表}`,
+      "",
+      `━━━ Layer 7: 上下文层 (Context) ━━━  [运行时注入]`,
+      `{对话历史最近10条}`,
+      "",
+      `━━━ Layer 8: 输入层 (Input) ━━━`,
+      `{用户输入内容}`,
+    ].join("\n");
+  };
+
+  /* ── Dropdown ── */
+  const Dropdown = ({ options, value, open, setOpen, onChange }: {
+    options: { value: string; label: string }[]; value: string; open: boolean;
+    setOpen: (v: boolean) => void; onChange: (v: string) => void;
+  }) => (
+    <div className="relative">
+      <button onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#18181C] border border-[#27272F] rounded-lg text-[12px] text-[#EAEAEF] hover:border-[#3B82F6]/50 transition-colors cursor-pointer min-w-[100px]">
+        <span>{options.find((o) => o.value === value)?.label}</span>
+        <svg className="w-3 h-3 text-[#55556A] ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-[#18181C] border border-[#27272F] rounded-lg shadow-xl z-50 min-w-[120px] overflow-hidden">
+          {options.map((opt) => (
+            <button key={opt.value} onClick={(e) => { e.stopPropagation(); onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-[12px] transition-colors cursor-pointer ${opt.value === value ? "bg-[#3B82F6] text-white" : "text-[#EAEAEF] hover:bg-[#27272F]"}`}>
+              {opt.label}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+    </div>
+  );
+
+  /* ── Layer editor block ── */
+  const LayerEditor = ({ num, color, en, desc, value, onChange, placeholder }: {
+    num: number; color: string; en: string; desc: string;
+    value: string; onChange: (v: string) => void; placeholder?: string;
+  }) => (
+    <div className="relative">
+      {/* Connector line */}
+      {num > 1 && <div className="absolute -top-4 left-5 w-px h-4" style={{ backgroundColor: `${color}30` }} />}
+      <div className="bg-[#18181C] border rounded-xl p-4 transition-colors" style={{ borderColor: `${color}30` }}>
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg text-[10px] font-bold text-white" style={{ backgroundColor: color }}>{num}</span>
+          <span className="text-[12px] font-semibold text-[#EAEAEF]">{en}</span>
+          <span className="text-[10px] text-[#55556A] ml-1">{desc}</span>
+          <span className="text-[10px] text-[#55556A] ml-auto">{value.length} 字符</span>
+        </div>
+        <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+          className="w-full h-32 bg-[#111114] border border-[#27272F] rounded-lg p-3 text-[12px] text-[#EAEAEF] font-mono resize-y focus:outline-none transition-colors"
+          style={{ ["--tw-ring-color" as string]: `${color}50` }}
+          onFocus={(e) => { e.target.style.borderColor = `${color}60`; }}
+          onBlur={(e) => { e.target.style.borderColor = "#27272F"; }}
+          spellCheck={false}
+        />
+      </div>
+    </div>
+  );
+
+  /* ── Runtime layer placeholder ── */
+  const RuntimeLayer = ({ num, color, en, label, desc }: {
+    num: number; color: string; en: string; label: string; desc: string;
+  }) => (
+    <div className="relative">
+      <div className="absolute -top-4 left-5 w-px h-4" style={{ backgroundColor: `${color}20` }} />
+      <div className="bg-[#111114] border border-dashed rounded-xl px-4 py-3 flex items-center gap-3" style={{ borderColor: `${color}30` }}>
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg text-[10px] font-bold border" style={{ color, borderColor: `${color}40`, backgroundColor: `${color}10` }}>{num}</span>
+        <div className="flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-medium" style={{ color }}>{en}</span>
+            <span className="text-[10px] text-[#55556A]">{label}</span>
+          </div>
+          <p className="text-[10px] text-[#444455] mt-0.5">{desc}</p>
+        </div>
+        <span className="text-[9px] px-2 py-0.5 rounded-full border" style={{ color: `${color}90`, borderColor: `${color}30`, backgroundColor: `${color}08` }}>运行时</span>
+      </div>
     </div>
   );
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-[16px] font-bold text-[#EAEAEF]">Prompt 工作室</h2>
-        <button
-          onClick={handleSaveNewVersion}
-          className="px-3 py-1.5 bg-[#3B82F6] rounded-lg text-[11px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer"
-        >
-          保存新版本
-        </button>
+    <div className="space-y-6">
+      {/* ── Header ── */}
+      <div>
+        <h2 className="text-[18px] font-bold text-[#EAEAEF]">Prompt Studio</h2>
+        <p className="text-[12px] text-[#55556A] mt-1">管理 7 层 Prompt 模板 — 可编辑的 3 层存储在数据库，其余 4 层运行时动态注入</p>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 bg-[#111114] border border-[#2A2A35] rounded-lg p-1">
-        {tabList.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-all duration-150 cursor-pointer whitespace-nowrap ${
-              tab === t.id
-                ? "bg-[#18181C] text-[#EAEAEF] shadow-sm border border-[#2A2A35]"
-                : "text-[#8B8B99] hover:text-[#EAEAEF] border border-transparent"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── 编辑器 tab ── */}
-      {tab === "editor" && (
-        <div className="space-y-4">
-          {layers.map((layer, idx) => (
-            <div key={layer.id} className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-[#3B82F620] text-[10px] font-bold text-[#3B82F6]">
-                    {idx + 1}
+      {/* ── Pipeline Overview ── */}
+      <div className="bg-[#18181C] border border-[#27272F] rounded-xl p-4">
+        <div className="flex items-center gap-1.5 mb-3">
+          <span className="text-[11px] font-semibold text-[#8B8B99]">PROMPT PIPELINE</span>
+          <span className="text-[10px] text-[#55556A]">用户请求 → 7 层组装 → LLM 调用</span>
+        </div>
+        <div className="flex items-center gap-0">
+          {PIPELINE_LAYERS.map((layer, idx) => (
+            <div key={layer.key} className="flex items-center">
+              <div className={`relative group flex flex-col items-center gap-1 px-2.5 py-2 rounded-lg transition-all ${layer.editable ? "bg-[#111114] border border-[#27272F]" : ""}`}>
+                <div className="flex items-center gap-1">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold text-white" style={{ backgroundColor: layer.color }}>{layer.num}</span>
+                  <span className="text-[10px] font-medium text-[#EAEAEF]">{layer.label}</span>
+                </div>
+                <span className="text-[9px] text-[#55556A] leading-tight text-center max-w-[80px]">{layer.desc}</span>
+                {layer.editable && (
+                  <span className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-[#3B82F6] border-2 border-[#18181C] flex items-center justify-center">
+                    <svg className="w-1.5 h-1.5 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
                   </span>
-                  <span className="text-[13px] font-semibold text-[#EAEAEF]">{layer.label}</span>
-                  <span className="text-[11px] text-[#55556A]">- {layer.description}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-[#55556A]">{layer.value.length} 字符</span>
-                  <button className="px-2.5 py-1 bg-[#3B82F6] rounded text-[10px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer">
-                    保存
-                  </button>
-                </div>
+                )}
               </div>
-              <textarea
-                value={layer.value}
-                onChange={(e) => handleLayerChange(layer.id, e.target.value)}
-                className="w-full h-24 bg-[#111114] border border-[#2A2A35] rounded-lg p-3 text-[12px] text-[#EAEAEF] font-mono resize-y focus:outline-none focus:border-[#3B82F6]/50 transition-colors"
-                spellCheck={false}
-              />
+              {idx < PIPELINE_LAYERS.length - 1 && (
+                <svg className="w-4 h-4 text-[#27272F] flex-shrink-0 mx-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              )}
             </div>
           ))}
+          <svg className="w-4 h-4 text-[#27272F] flex-shrink-0 mx-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          <div className="flex flex-col items-center gap-1 px-2.5 py-2 bg-[#22C55E10] border border-[#22C55E30] rounded-lg">
+            <span className="text-[10px] font-bold text-[#22C55E]">LLM</span>
+            <span className="text-[9px] text-[#55556A]">Qwen / GPT-4o</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Toolbar ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Dropdown options={TASK_OPTIONS} value={taskFilter} open={taskOpen} setOpen={setTaskOpen} onChange={setTaskFilter} />
+        <Dropdown options={SCENE_OPTIONS} value={sceneFilter} open={sceneOpen} setOpen={setSceneOpen} onChange={setSceneFilter} />
+        <button onClick={() => setShowNew(true)} className="px-3 py-1.5 bg-[#3B82F6] rounded-lg text-[12px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer">
+          + 新增 Prompt
+        </button>
+        <span className="text-[11px] text-[#55556A] ml-auto">{versions.length} 条模板</span>
+      </div>
+
+      {/* ── Table ── */}
+      <div className="bg-[#18181C] border border-[#27272F] rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="px-4 py-12 text-center">
+            <div className="inline-block w-6 h-6 border-2 border-[#27272F] border-t-[#3B82F6] rounded-full animate-spin" />
+            <p className="text-[12px] text-[#55556A] mt-2">加载中…</p>
+          </div>
+        ) : versions.length === 0 ? (
+          <div className="px-4 py-12 text-center text-[13px] text-[#55556A]">暂无 Prompt 数据</div>
+        ) : (
+          <table className="w-full" style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr className="border-b border-[#27272F]">
+                {["ID", "任务", "场景", "版本", "AB组", "状态", "操作"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {versions.map((v, idx) => {
+                const tc = TASK_COLOR[v.task] || "#8B8B99";
+                return (
+                  <tr key={v.id} className="border-b border-[#27272F] hover:bg-[#1E1E24] transition-colors">
+                    <td className="px-4 py-3 text-[12px] text-[#55556A]">{idx + 1}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium" style={{ color: tc, backgroundColor: `${tc}15` }}>
+                        {TASK_CN[v.task] || v.task}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[12px] font-medium text-[#EAEAEF]">{SCENE_CN[v.scene] || v.scene}</td>
+                    <td className="px-4 py-3 text-[12px] font-mono text-[#EAEAEF]">{v.version}</td>
+                    <td className="px-4 py-3 text-[12px] text-[#55556A]">{v.abGroup || "-"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[11px] font-medium ${v.status === "active" ? "text-[#22C55E]" : v.status === "draft" ? "text-[#FBBF24]" : "text-[#55556A]"}`}>
+                        {v.status === "active" ? "启用" : v.status === "draft" ? "草稿" : "禁用"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleEdit(v)} className="px-2.5 py-1 rounded text-[11px] font-medium text-[#3B82F6] bg-[#3B82F620] hover:bg-[#3B82F630] transition-colors cursor-pointer">编辑</button>
+                        <button onClick={() => handleToggleStatus(v)} className="px-2.5 py-1 rounded text-[11px] font-medium text-[#F59E0B] bg-[#F59E0B20] hover:bg-[#F59E0B30] transition-colors cursor-pointer">
+                          {v.status === "active" ? "禁用" : "启用"}
+                        </button>
+                        <button onClick={() => handleDelete(v)} className="px-2.5 py-1 rounded text-[11px] font-medium text-white bg-[#EF4444] hover:bg-[#EF4444]/80 transition-colors cursor-pointer">删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Edit Modal ── */}
+      {editing && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditing(null)}>
+          <div className="bg-[#0D0D10] border border-[#27272F] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal header */}
+            <div className="flex-shrink-0 border-b border-[#27272F] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium" style={{ color: TASK_COLOR[editing.task] || "#8B8B99", backgroundColor: `${TASK_COLOR[editing.task] || "#8B8B99"}15` }}>
+                  {TASK_CN[editing.task] || editing.task}
+                </span>
+                <span className="text-[12px] text-[#8B8B99]">{SCENE_CN[editing.scene] || editing.scene}</span>
+                <span className="text-[11px] font-mono text-[#55556A]">{editing.version}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Tab: 编辑 / 预览 */}
+                <div className="flex bg-[#18181C] rounded-lg border border-[#27272F] p-0.5">
+                  {["编辑", "预览"].map((t, i) => (
+                    <button key={t} onClick={() => setEditTab(i)}
+                      className={`px-3 py-1 rounded text-[11px] font-medium transition-all cursor-pointer ${editTab === i ? "bg-[#27272F] text-[#EAEAEF]" : "text-[#55556A] hover:text-[#EAEAEF]"}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setEditing(null)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#55556A] hover:text-[#EAEAEF] hover:bg-[#27272F] cursor-pointer transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {editTab === 0 ? (
+                /* ── Edit tab: 7-layer chain ── */
+                <div className="space-y-4">
+                  <LayerEditor num={1} color="#3B82F6" en="System Prompt" desc="核心身份 & 能力定义"
+                    value={editSystem} onChange={setEditSystem} placeholder="系统角色设定…" />
+
+                  <RuntimeLayer num={2} color="#8B5CF6" en="Memory" label="记忆层" desc="用户偏好、身份、历史 — 从用户数据自动注入" />
+
+                  <LayerEditor num={3} color="#EC4899" en="Task Prompt" desc={`任务指令 — ${TASK_CN[editing.task] || editing.task}`}
+                    value={editTask} onChange={setEditTask} placeholder="任务指令…" />
+
+                  <LayerEditor num={4} color="#F59E0B" en="Scene Prompt" desc={`场景规则 — ${SCENE_CN[editing.scene] || editing.scene}`}
+                    value={editScene} onChange={setEditScene} placeholder="场景规则…" />
+
+                  <RuntimeLayer num={5} color="#10B981" en="Tone" label="语气层" desc="根据用户语气滑块 (1-10) 动态生成" />
+                  <RuntimeLayer num={6} color="#06B6D4" en="Knowledge" label="知识层" desc="RAG 知识库匹配结果自动注入" />
+                  <RuntimeLayer num={7} color="#6366F1" en="Context" label="上下文层" desc="最近 10 条对话历史自动注入" />
+                </div>
+              ) : (
+                /* ── Preview tab: assembled prompt ── */
+                <div>
+                  <p className="text-[11px] text-[#55556A] mb-3">完整 Prompt 组装预览 — 灰色部分为运行时动态填充</p>
+                  <pre className="bg-[#111114] border border-[#27272F] rounded-xl p-4 text-[11px] text-[#EAEAEF] font-mono whitespace-pre-wrap leading-relaxed overflow-x-auto max-h-[60vh]">
+                    {buildPreview()}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex-shrink-0 border-t border-[#27272F] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[10px] text-[#55556A]">
+                <span>System: {editSystem.length} 字</span>
+                <span className="text-[#27272F]">|</span>
+                <span>Task: {editTask.length} 字</span>
+                <span className="text-[#27272F]">|</span>
+                <span>Scene: {editScene.length} 字</span>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setEditing(null)} className="px-4 py-2 rounded-lg text-[12px] text-[#8B8B99] hover:text-[#EAEAEF] border border-[#27272F] cursor-pointer transition-colors">取消</button>
+                <button onClick={handleSave} disabled={saving} className="px-5 py-2 bg-[#3B82F6] rounded-lg text-[12px] font-medium text-white hover:bg-[#3B82F6]/90 disabled:opacity-50 cursor-pointer transition-colors">
+                  {saving ? "保存中…" : "保存"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── 版本历史 tab ── */}
-      {tab === "versions" && (
-        loading ? <LoadingSkeleton /> : (
-          <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl overflow-hidden">
-            {versions.length === 0 ? (
-              <div className="px-4 py-8 text-center text-[13px] text-[#55556A]">暂无版本记录</div>
-            ) : (
-              <table className="w-full" style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr className="border-b border-[#2A2A35]">
-                    {["版本", "变更说明", "创建时间", "状态", "操作"].map((h) => (
-                      <th
-                        key={h}
-                        className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {versions.map((v) => {
-                    const sc = statusColors[v.status] || { color: "#8B8B99", bg: "#2A2A35" };
-                    return (
-                      <tr key={v.id} className="border-b border-[#2A2A35] hover:bg-[#1E1E24] transition-colors">
-                        <td className="px-4 py-3 text-[12px] font-mono font-semibold text-[#EAEAEF]">{v.version}</td>
-                        <td className="px-4 py-3 text-[12px] text-[#8B8B99] max-w-[260px] truncate">{v.changes}</td>
-                        <td className="px-4 py-3 text-[11px] text-[#55556A]">{v.createdAt}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
-                            style={{ color: sc.color, backgroundColor: sc.bg }}
-                          >
-                            {statusLabels[v.status] || v.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {v.status === "draft" && (
-                              <button
-                                onClick={() => handleUpdateStatus(v.id, "active")}
-                                className="px-2 py-1 rounded text-[10px] font-medium text-[#22C55E] bg-[#22C55E20] hover:bg-[#22C55E30] transition-colors cursor-pointer"
-                              >
-                                激活
-                              </button>
-                            )}
-                            {v.status === "active" && (
-                              <button
-                                onClick={() => handleUpdateStatus(v.id, "archived")}
-                                className="px-2 py-1 rounded text-[10px] font-medium text-[#55556A] bg-[#55556A20] hover:bg-[#55556A30] transition-colors cursor-pointer"
-                              >
-                                归档
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )
-      )}
-
-      {/* ── AB 测试 tab ── */}
-      {tab === "abtest" && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setAbTestRunning(!abTestRunning)}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
-                abTestRunning
-                  ? "bg-[#EF4444] text-white hover:bg-[#EF4444]/90"
-                  : "bg-[#22C55E] text-white hover:bg-[#22C55E]/90"
-              }`}
-            >
-              {abTestRunning ? "停止测试" : "开始测试"}
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {([abTestData.control, abTestData.variant] as ABPanel[]).map((panel) => {
-              const isVariant = panel.label === "Variant";
-              const borderColor = isVariant ? "#A855F7" : "#3B82F6";
-              return (
-                <div
-                  key={panel.label}
-                  className="bg-[#18181C] rounded-xl p-5"
-                  style={{ border: `1px solid ${borderColor}40` }}
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold"
-                        style={{ color: borderColor, backgroundColor: `${borderColor}20` }}
-                      >
-                        {panel.label}
-                      </span>
-                      <span className="text-[12px] text-[#8B8B99] font-mono">{panel.version}</span>
-                    </div>
-                    <span className="text-[10px] font-medium text-[#22C55E]">{panel.status}</span>
-                  </div>
-                  <div className="space-y-3">
-                    {[
-                      { label: "样本量", value: panel.sampleSize.toLocaleString(), color: "#EAEAEF" },
-                      { label: "响应质量", value: `${panel.responseQuality}%`, color: panel.responseQuality > 85 ? "#22C55E" : "#FBBF24" },
-                      { label: "用户满意度", value: `${panel.satisfaction}%`, color: panel.satisfaction > 80 ? "#22C55E" : "#FBBF24" },
-                      { label: "平均延迟", value: panel.avgLatency, color: "#8B8B99" },
-                    ].map((metric) => (
-                      <div key={metric.label} className="flex items-center justify-between py-2 border-b border-[#2A2A35]/50">
-                        <span className="text-[11px] text-[#55556A]">{metric.label}</span>
-                        <span className="text-[13px] font-semibold" style={{ color: metric.color }}>
-                          {metric.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+      {/* ── New Prompt Modal ── */}
+      {showNew && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowNew(false)}>
+          <div className="bg-[#0D0D10] border border-[#27272F] rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex-shrink-0 border-b border-[#27272F] px-6 py-4 flex items-center justify-between">
+              <h3 className="text-[14px] font-bold text-[#EAEAEF]">新增 Prompt</h3>
+              <button onClick={() => setShowNew(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-[#55556A] hover:text-[#EAEAEF] hover:bg-[#27272F] cursor-pointer transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] text-[#55556A] mb-1 block">任务</label>
+                  <select value={newTask} onChange={(e) => setNewTask(e.target.value)} className="w-full px-3 py-2 bg-[#18181C] border border-[#27272F] rounded-lg text-[12px] text-[#EAEAEF] focus:outline-none focus:border-[#3B82F6]/50">
+                    {TASK_OPTIONS.filter((o) => o.value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                 </div>
-              );
-            })}
+                <div>
+                  <label className="text-[11px] text-[#55556A] mb-1 block">场景</label>
+                  <select value={newScene} onChange={(e) => setNewScene(e.target.value)} className="w-full px-3 py-2 bg-[#18181C] border border-[#27272F] rounded-lg text-[12px] text-[#EAEAEF] focus:outline-none focus:border-[#3B82F6]/50">
+                    {SCENE_OPTIONS.filter((o) => o.value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-[#55556A] mb-1 block">版本</label>
+                  <input value={newVersion} onChange={(e) => setNewVersion(e.target.value)} className="w-full px-3 py-2 bg-[#18181C] border border-[#27272F] rounded-lg text-[12px] text-[#EAEAEF] font-mono focus:outline-none focus:border-[#3B82F6]/50" />
+                </div>
+              </div>
+              <LayerEditor num={1} color="#3B82F6" en="System Prompt" desc="核心身份 & 能力定义"
+                value={newSystem} onChange={setNewSystem} placeholder="系统角色设定…" />
+              <LayerEditor num={3} color="#EC4899" en="Task Prompt" desc="任务指令"
+                value={newTaskPrompt} onChange={setNewTaskPrompt} placeholder="任务指令…" />
+              <LayerEditor num={4} color="#F59E0B" en="Scene Prompt" desc="场景规则"
+                value={newScenePrompt} onChange={setNewScenePrompt} placeholder="场景规则…" />
+            </div>
+            <div className="flex-shrink-0 border-t border-[#27272F] px-6 py-4 flex justify-end gap-3">
+              <button onClick={() => setShowNew(false)} className="px-4 py-2 rounded-lg text-[12px] text-[#8B8B99] hover:text-[#EAEAEF] border border-[#27272F] cursor-pointer">取消</button>
+              <button onClick={handleCreate} disabled={saving} className="px-5 py-2 bg-[#3B82F6] rounded-lg text-[12px] font-medium text-white hover:bg-[#3B82F6]/90 disabled:opacity-50 cursor-pointer">
+                {saving ? "创建中…" : "创建"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -30,7 +30,7 @@ export async function lookupModelRoute(
   const route = await prisma.modelRoute.findFirst({
     where: {
       taskType: taskType.toUpperCase() as "TRANSLATION" | "REPLY" | "RISK" | "LEARN" | "SCAN",
-      sceneType: sceneType.toUpperCase() as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "REPAIR",
+      sceneType: sceneType.toUpperCase() as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "HOUSEKEEPING",
       active: true,
     },
     select: {

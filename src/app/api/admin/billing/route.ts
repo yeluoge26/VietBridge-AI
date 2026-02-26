@@ -14,12 +14,32 @@ export async function GET() {
     return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
 
-  const [totalUsers, subscriptions] = await Promise.all([
+  // Current month boundaries
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [totalUsers, subscriptions, modelUsageByPlanRaw] = await Promise.all([
     prisma.user.count(),
     prisma.subscription.groupBy({
       by: ["plan"],
       _count: { plan: true },
     }),
+    // Model usage grouped by plan and model for the current month
+    prisma.$queryRaw<
+      { plan: string; model: string; calls: number; tokens: number; cost: number }[]
+    >`
+      SELECT
+        COALESCE(s."plan", 'FREE') AS "plan",
+        u."modelUsed" AS "model",
+        COUNT(*)::int AS "calls",
+        SUM(u."tokensPrompt" + u."tokensCompletion")::int AS "tokens",
+        SUM(u."cost")::float AS "cost"
+      FROM "UsageLog" u
+      LEFT JOIN "Subscription" s ON s."userId" = u."userId"
+      WHERE u."createdAt" >= ${monthStart}
+      GROUP BY COALESCE(s."plan", 'FREE'), u."modelUsed"
+      ORDER BY "plan", "model"
+    `,
   ]);
 
   const planBreakdown = subscriptions.map((s) => ({
@@ -31,14 +51,18 @@ export async function GET() {
     .filter((p) => p.plan !== "FREE")
     .reduce((sum, p) => sum + p.count, 0);
 
-  const freeUsers = planBreakdown
-    .filter((p) => p.plan === "FREE")
-    .reduce((sum, p) => sum + p.count, 0);
+  // Users without any subscription record are also free users
+  const freeUsers = totalUsers - paidUsers;
+
+  // Ensure FREE count in planBreakdown includes users without subscription records
+  const adjustedBreakdown = planBreakdown.filter((p) => p.plan !== "FREE");
+  adjustedBreakdown.push({ plan: "FREE", count: freeUsers });
 
   return NextResponse.json({
     totalUsers,
     paidUsers,
     freeUsers,
-    planBreakdown,
+    planBreakdown: adjustedBreakdown,
+    modelUsageByPlan: modelUsageByPlanRaw,
   });
 }

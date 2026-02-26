@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 data class AuthState(
     val isLoading: Boolean = true,
     val isAuthenticated: Boolean = false,
+    val isGuest: Boolean = false,
     val user: User? = null,
     val error: String? = null,
     val success: String? = null,
@@ -34,16 +35,18 @@ class AuthViewModel(private val tokenManager: TokenManager) : ViewModel() {
 
     private fun checkAuth() {
         if (tokenManager.token == null) {
-            _state.update { it.copy(isLoading = false) }
+            // No token → enter as guest (skip login screen)
+            _state.update { it.copy(isLoading = false, isAuthenticated = true, isGuest = true) }
             return
         }
         viewModelScope.launch {
             try {
                 val user = ApiClient.api.me()
-                _state.update { it.copy(isLoading = false, isAuthenticated = true, user = user) }
+                _state.update { it.copy(isLoading = false, isAuthenticated = true, isGuest = false, user = user) }
             } catch (_: Exception) {
                 tokenManager.clear()
-                _state.update { it.copy(isLoading = false) }
+                // Auth failed → still enter as guest
+                _state.update { it.copy(isLoading = false, isAuthenticated = true, isGuest = true) }
             }
         }
     }
@@ -54,7 +57,7 @@ class AuthViewModel(private val tokenManager: TokenManager) : ViewModel() {
             try {
                 val response = ApiClient.api.login(LoginRequest(email, password))
                 tokenManager.token = response.token
-                _state.update { it.copy(isLoading = false, isAuthenticated = true, user = response.user) }
+                _state.update { it.copy(isLoading = false, isAuthenticated = true, isGuest = false, user = response.user) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: "登录失败") }
             }
@@ -67,7 +70,7 @@ class AuthViewModel(private val tokenManager: TokenManager) : ViewModel() {
             try {
                 val response = ApiClient.api.register(RegisterRequest(name, email, password))
                 tokenManager.token = response.token
-                _state.update { it.copy(isLoading = false, isAuthenticated = true, user = response.user) }
+                _state.update { it.copy(isLoading = false, isAuthenticated = true, isGuest = false, user = response.user) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: "注册失败") }
             }
@@ -88,7 +91,7 @@ class AuthViewModel(private val tokenManager: TokenManager) : ViewModel() {
 
     fun signOut() {
         tokenManager.clear()
-        _state.update { AuthState(isLoading = false) }
+        _state.update { AuthState(isLoading = false, isAuthenticated = true, isGuest = true) }
     }
 
     fun clearMessages() {

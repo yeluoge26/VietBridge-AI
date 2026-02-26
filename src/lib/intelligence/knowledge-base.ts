@@ -233,7 +233,7 @@ export const KNOWLEDGE_BASE: KnowledgeBase = {
       },
       {
         pattern: "维修乱收费",
-        scene: "repair",
+        scene: "housekeeping",
         indicators: [
           "不提前报价就开始维修",
           "维修后价格远超报价",

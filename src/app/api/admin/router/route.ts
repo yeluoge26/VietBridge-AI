@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       maxCost: body.maxCost,
       maxLatency: body.maxLatency,
       active: body.active,
+      userLevel: body.userLevel,
     },
   });
   return NextResponse.json(route, { status: 201 });
@@ -69,6 +70,7 @@ export async function PUT(req: NextRequest) {
       maxCost: body.maxCost,
       maxLatency: body.maxLatency,
       active: body.active,
+      userLevel: body.userLevel,
     },
   });
   return NextResponse.json(route);

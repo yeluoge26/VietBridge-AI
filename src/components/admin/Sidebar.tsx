@@ -57,6 +57,13 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M1 7h14" />
     </svg>
   ),
+  "graduation-cap": (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1L1 5l7 4 7-4-7-4z" />
+      <path d="M3 7v4c0 1.5 2.2 3 5 3s5-1.5 5-3V7" />
+      <path d="M14 5v5" />
+    </svg>
+  ),
   settings: (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="8" cy="8" r="2" />
@@ -83,6 +90,7 @@ const navSections: NavSection[] = [
       { id: "dash", label: "Dashboard", icon: "grid" },
       { id: "kb", label: "知识库", icon: "book" },
       { id: "prompt", label: "Prompt", icon: "terminal" },
+      { id: "course", label: "课程管理", icon: "graduation-cap" },
     ],
   },
   {

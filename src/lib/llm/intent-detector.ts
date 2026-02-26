@@ -51,8 +51,8 @@ const SCENE_KEYWORDS: Record<SceneId, RegExp> = {
   rent: /租房|房子|公寓|房租|房东|搬家|thuê nhà|căn hộ|phòng trọ|chủ nhà|tiền thuê|押金|水电|合同/i,
   hospital:
     /医院|看病|医生|药|生病|bệnh viện|bác sĩ|thuốc|ốm|đau|头疼|发烧|感冒|拉肚子|过敏|急诊|挂号|体检/i,
-  repair:
-    /维修|修理|坏了|师傅|sửa chữa|hỏng|thợ|水管|电器|空调|马桶|漏水|不工作|换|装/i,
+  housekeeping:
+    /家政|保姆|钟点工|打扫|清洁|giúp việc|dọn dẹp|lau nhà|giặt đồ|nấu ăn|保洁|阿姨|做饭|洗衣|拖地/i,
 };
 
 // ---------------------------------------------------------------------------

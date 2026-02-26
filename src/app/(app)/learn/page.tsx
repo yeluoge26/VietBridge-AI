@@ -2,20 +2,54 @@
 
 // ============================================================================
 // VietBridge AI V2 — Learn Page
-// Scene-based Vietnamese learning with daily phrases, quick phrases, and AI chat
+// Scene-based Vietnamese learning with daily phrases, courses, and AI chat
 // ============================================================================
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import DailyCard from "@/components/app/cards/DailyCard";
 import { DAILY_PHRASES, getPhrasesByScene } from "@/lib/intelligence/daily-phrases";
 import { SCENES } from "@/lib/intelligence/scene-rules";
 import { speak } from "@/lib/tts";
 
-type LearnTab = "daily" | "scenes" | "phrases";
+type LearnTab = "daily" | "courses" | "scenes" | "phrases";
+
+/* ── DB course type ── */
+interface Course {
+  id: string;
+  category: string;
+  chinese: string;
+  vietnamese: string;
+  pronunciation: string;
+  culturalNote: string;
+  exampleSentence: string;
+  difficulty: string;
+  isDaily: boolean;
+}
+
+const SCENE_CN: Record<string, string> = {
+  general: "通用", business: "商务", staff: "员工", couple: "情侣",
+  rent: "租房", restaurant: "餐厅", hospital: "医院", housekeeping: "家政",
+};
+
+const DIFF_CN: Record<string, string> = {
+  beginner: "初级", intermediate: "中级", advanced: "高级",
+};
+
+const DIFF_STYLE: Record<string, { color: string; bg: string }> = {
+  beginner: { color: "#22C55E", bg: "#22C55E18" },
+  intermediate: { color: "#3B82F6", bg: "#3B82F618" },
+  advanced: { color: "#F97316", bg: "#F9731618" },
+};
 
 export default function LearnPage() {
   const [tab, setTab] = useState<LearnTab>("daily");
   const [selectedScene, setSelectedScene] = useState<string | null>(null);
+
+  // Course state
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [courseCategory, setCourseCategory] = useState("");
+  const [courseDifficulty, setCourseDifficulty] = useState("");
+  const [courseLoading, setCourseLoading] = useState(false);
 
   const scenePhrases = selectedScene
     ? getPhrasesByScene(selectedScene)
@@ -23,9 +57,28 @@ export default function LearnPage() {
 
   const tabs: { id: LearnTab; label: string }[] = [
     { id: "daily", label: "每日一句" },
+    { id: "courses", label: "课程学习" },
     { id: "scenes", label: "场景学习" },
     { id: "phrases", label: "常用短语" },
   ];
+
+  /* ── Fetch courses from DB ── */
+  const fetchCourses = useCallback(async () => {
+    setCourseLoading(true);
+    const params = new URLSearchParams();
+    if (courseCategory) params.set("category", courseCategory);
+    if (courseDifficulty) params.set("difficulty", courseDifficulty);
+    try {
+      const res = await fetch(`/api/courses?${params}`);
+      const data = await res.json();
+      setCourses(Array.isArray(data) ? data : []);
+    } catch { /* ignore */ }
+    setCourseLoading(false);
+  }, [courseCategory, courseDifficulty]);
+
+  useEffect(() => {
+    if (tab === "courses") fetchCourses();
+  }, [tab, fetchCourses]);
 
   return (
     <div className="flex flex-1 flex-col bg-[#F8F7F5]">
@@ -66,6 +119,45 @@ export default function LearnPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Tab: Courses (DB-backed) ──────────────────────────────────── */}
+        {tab === "courses" && (
+          <div className="p-4 space-y-4">
+            {/* Filters */}
+            <div className="flex gap-2 flex-wrap">
+              <select
+                value={courseCategory}
+                onChange={(e) => setCourseCategory(e.target.value)}
+                className="rounded-lg border border-[#EDEDED] bg-white px-3 py-1.5 text-xs text-[#333]"
+              >
+                <option value="">全部分类</option>
+                {SCENES.map((s) => <option key={s.id} value={s.id}>{s.emoji} {s.label}</option>)}
+              </select>
+              <select
+                value={courseDifficulty}
+                onChange={(e) => setCourseDifficulty(e.target.value)}
+                className="rounded-lg border border-[#EDEDED] bg-white px-3 py-1.5 text-xs text-[#333]"
+              >
+                <option value="">全部难度</option>
+                <option value="beginner">初级</option>
+                <option value="intermediate">中级</option>
+                <option value="advanced">高级</option>
+              </select>
+            </div>
+
+            {courseLoading ? (
+              <div className="text-center py-12 text-sm text-[#999]">加载中...</div>
+            ) : courses.length === 0 ? (
+              <div className="text-center py-12 text-sm text-[#999]">暂无课程</div>
+            ) : (
+              <div className="space-y-3">
+                {courses.map((c) => (
+                  <CourseCard key={c.id} course={c} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -124,7 +216,86 @@ export default function LearnPage() {
   );
 }
 
-// ── Reusable Phrase Row ───────────────────────────────────────────────────
+// ── Course Card (DB-backed) ───────────────────────────────────────────────
+
+function CourseCard({ course }: { course: Course }) {
+  const [open, setOpen] = useState(false);
+  const ds = DIFF_STYLE[course.difficulty] || { color: "#999", bg: "#eee" };
+
+  return (
+    <div className="rounded-xl border border-[#EDEDED] bg-white overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-medium text-[#111] truncate">{course.vietnamese}</p>
+            <span
+              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              style={{ color: ds.color, backgroundColor: ds.bg }}
+            >
+              {DIFF_CN[course.difficulty] || course.difficulty}
+            </span>
+          </div>
+          <p className="text-xs text-[#888] truncate">{course.chinese}</p>
+          {course.pronunciation && (
+            <p className="text-[11px] text-[#bbb] italic mt-0.5">{course.pronunciation}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            speak(course.vietnamese, "vi-VN");
+          }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2E7D32]/10 transition-colors hover:bg-[#2E7D32]/20"
+          aria-label="播放"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#2E7D32" stroke="none">
+            <polygon points="5,3 19,12 5,21" />
+          </svg>
+        </button>
+      </button>
+
+      {open && (
+        <div className="border-t border-[#EDEDED] px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2 text-[11px] text-[#999]">
+            <span className="rounded-full bg-[#F2F1EF] px-2 py-0.5">{SCENE_CN[course.category] || course.category}</span>
+            {course.isDaily && <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[#92400E]">每日一句</span>}
+          </div>
+          {course.culturalNote && (
+            <div className="rounded-lg bg-[#F2F1EF] px-3 py-2">
+              <p className="text-xs text-[#666]">
+                <span className="mr-1">{"\uD83D\uDCA1"}</span>
+                {course.culturalNote}
+              </p>
+            </div>
+          )}
+          {course.exampleSentence && (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-[#555]">
+                <span className="text-[#999] mr-1">例句:</span>
+                {course.exampleSentence}
+              </p>
+              <button
+                type="button"
+                onClick={() => speak(course.exampleSentence, "vi-VN")}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#2E7D32]/10"
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="#2E7D32" stroke="none">
+                  <polygon points="5,3 19,12 5,21" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Reusable Phrase Row (for hardcoded phrases) ───────────────────────────
 
 interface PhraseRowProps {
   phrase: { vi: string; zh: string; pinyin?: string; culture: string; scene: string };

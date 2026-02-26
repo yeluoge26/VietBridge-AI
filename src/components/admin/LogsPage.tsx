@@ -17,7 +17,7 @@ interface ApiLogEntry {
     | "RESTAURANT"
     | "RENT"
     | "HOSPITAL"
-    | "REPAIR";
+    | "HOUSEKEEPING";
   modelUsed: string;
   input: string;
   output: string;
@@ -81,11 +81,11 @@ const SCENE_MAP: Record<ApiLogEntry["sceneType"], string> = {
   GENERAL: "通用",
   BUSINESS: "商务",
   STAFF: "员工",
-  COUPLE: "伴侣",
+  COUPLE: "情侣",
   RESTAURANT: "餐厅",
   RENT: "租房",
   HOSPITAL: "医院",
-  REPAIR: "维修",
+  HOUSEKEEPING: "家政",
 };
 
 /* ── Derive StatusDot status from API data ── */
@@ -179,7 +179,6 @@ export default function LogsPage({ toast }: LogsPageProps) {
       params.set("page", String(page));
       params.set("limit", String(PAGE_LIMIT));
       if (taskFilter !== "all") params.set("task", taskFilter);
-      if (statusFilter !== "all") params.set("status", statusFilter === "ok" ? "ok" : statusFilter);
 
       const res = await fetch(`/api/admin/logs?${params.toString()}`);
       if (!res.ok) throw new Error(`请求失败 (${res.status})`);
@@ -230,7 +229,24 @@ export default function LogsPage({ toast }: LogsPageProps) {
             刷新
           </button>
           <button
-            onClick={() => toast("CSV 导出中...")}
+            onClick={() => {
+              if (filtered.length === 0) { toast("暂无数据可导出"); return; }
+              const header = "ID,时间,用户,任务,模型,Tokens,成本,延迟,风险,RAG,场景";
+              const rows = filtered.map((l) =>
+                [l.id, l.time, l.user, l.task, l.model, l.tokens, l.cost, l.latency, l.risk, l.ragHit ? "HIT" : "MISS", l.scene]
+                  .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+                  .join(",")
+              );
+              const csv = [header, ...rows].join("\n");
+              const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `llm-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+              a.click();
+              URL.revokeObjectURL(url);
+              toast("CSV 已导出");
+            }}
             className="px-3 py-1.5 bg-[#18181C] border border-[#27272F] rounded-lg text-[11px] font-medium text-[#8B8B99] hover:text-[#EAEAEF] hover:border-[#333340] transition-all cursor-pointer"
           >
             导出 CSV

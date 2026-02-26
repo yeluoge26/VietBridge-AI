@@ -7,6 +7,7 @@
 import type { TaskId } from "../intelligence/tasks";
 import type { SceneId } from "../intelligence/scene-rules";
 import { estimateTokens } from "../token-estimator";
+import { prisma } from "../prisma";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +25,7 @@ export interface SelectModelParams {
   scene: SceneId;
   input: string;
   isPro: boolean;
+  userLevel?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,20 +38,10 @@ const MODELS = {
     tier: "pro" as const,
     maxTokens: 4096,
   },
-  "claude-sonnet": {
-    name: "claude-3-5-sonnet-20241022",
-    tier: "pro" as const,
+  "qwen-plus": {
+    name: "qwen-plus",
+    tier: "free" as const,
     maxTokens: 4096,
-  },
-  "qwen-14b": {
-    name: "qwen2.5-14b-instruct",
-    tier: "free" as const,
-    maxTokens: 2048,
-  },
-  "qwen-7b": {
-    name: "qwen2.5-7b-instruct",
-    tier: "free" as const,
-    maxTokens: 1024,
   },
   "gpt-4o-vision": {
     name: "gpt-4o",
@@ -103,24 +95,44 @@ function hasImageContent(input: string): boolean {
 /**
  * The route matrix defines model preference per task+complexity combination.
  *
- * Priority order for Pro users:
- *   OCR/Image → GPT-4o Vision
- *   Complex   → GPT-4o
- *   Standard  → Claude Sonnet
- *
- * Priority order for Free users:
- *   Complex   → Qwen 14B
- *   Standard  → Qwen 7B
+ * Default model: Qwen3.5-Plus (qwen-plus) for all users.
+ * Pro users on complex/OCR tasks escalate to GPT-4o.
  */
+
+// ---------------------------------------------------------------------------
+// DB-based route lookup (priority over hardcoded logic)
+// ---------------------------------------------------------------------------
+
+async function findDbRoute(
+  task: string,
+  scene: string,
+  userLevel: number
+): Promise<{ primaryModel: string; fallbackModel: string | null } | null> {
+  const taskUpper = task.toUpperCase();
+  const sceneUpper = scene.toUpperCase();
+
+  // Try exact userLevel match first, then fallback to level 0 (all levels)
+  const route = await prisma.modelRoute.findFirst({
+    where: {
+      taskType: taskUpper as never,
+      sceneType: sceneUpper as never,
+      active: true,
+      userLevel: { in: [userLevel, 0] },
+    },
+    orderBy: { userLevel: "desc" }, // Prefer specific level over 0
+  });
+
+  if (!route) return null;
+  return { primaryModel: route.primaryModel, fallbackModel: route.fallbackModel };
+}
 
 // ---------------------------------------------------------------------------
 // Model selection
 // ---------------------------------------------------------------------------
 
 export function selectModel(params: SelectModelParams): ModelSelection {
-  const { task, scene, input, isPro } = params;
-  const inputTokens = estimateTokens(input);
-  const complex = isComplexInput(input, task, scene);
+  const { task, input, isPro } = params;
+  const complex = isComplexInput(input, params.task, params.scene);
 
   // --- OCR / Image content → Vision model (Pro only) ---
   if (hasImageContent(input)) {
@@ -132,47 +144,51 @@ export function selectModel(params: SelectModelParams): ModelSelection {
         tokens: MODELS["gpt-4o-vision"].maxTokens,
       };
     }
-    // Free users fall through to Qwen for text description
+    // Free users fall through to Qwen-Plus for text description
   }
 
-  // --- Pro users ---
-  if (isPro) {
-    // Complex tasks → GPT-4o for best quality
-    if (complex) {
+  // --- Pro + complex → GPT-4o ---
+  if (isPro && complex) {
+    return {
+      name: MODELS["gpt-4o"].name,
+      reason: `复杂${task === "risk" ? "风险分析" : "任务"}，使用GPT-4o获取最佳质量`,
+      tier: "pro",
+      tokens: MODELS["gpt-4o"].maxTokens,
+    };
+  }
+
+  // --- Default: Qwen3.5-Plus for all users ---
+  return {
+    name: MODELS["qwen-plus"].name,
+    reason: isPro ? "Pro会员标准任务，使用Qwen-Plus" : "标准任务，使用Qwen-Plus",
+    tier: isPro ? "pro" : "free",
+    tokens: MODELS["qwen-plus"].maxTokens,
+  };
+}
+
+/**
+ * Enhanced model selection with DB route lookup.
+ * Checks ModelRoute table first (supports per-level routing),
+ * falls back to hardcoded logic.
+ */
+export async function selectModelAsync(
+  params: SelectModelParams
+): Promise<ModelSelection> {
+  const { task, scene, isPro, userLevel = 1 } = params;
+
+  try {
+    const dbRoute = await findDbRoute(task, scene, userLevel);
+    if (dbRoute) {
       return {
-        name: MODELS["gpt-4o"].name,
-        reason: `复杂${task === "risk" ? "风险分析" : "任务"}，使用GPT-4o获取最佳质量`,
-        tier: "pro",
-        tokens: MODELS["gpt-4o"].maxTokens,
+        name: dbRoute.primaryModel,
+        reason: `DB\u8DEF\u7531\u5339\u914D (L${userLevel})`,
+        tier: isPro ? "pro" : "free",
+        tokens: 4096,
       };
     }
-
-    // Standard Pro tasks → Claude Sonnet (good balance of quality and speed)
-    return {
-      name: MODELS["claude-sonnet"].name,
-      reason: "Pro会员标准任务，使用Claude Sonnet",
-      tier: "pro",
-      tokens: MODELS["claude-sonnet"].maxTokens,
-    };
+  } catch {
+    // DB lookup failed, fall through to hardcoded logic
   }
 
-  // --- Free users ---
-
-  // Complex free tasks → Qwen 14B
-  if (complex) {
-    return {
-      name: MODELS["qwen-14b"].name,
-      reason: `复杂任务，使用Qwen 14B提升质量（输入约${inputTokens}tokens）`,
-      tier: "free",
-      tokens: MODELS["qwen-14b"].maxTokens,
-    };
-  }
-
-  // Default free → Qwen 7B
-  return {
-    name: MODELS["qwen-7b"].name,
-    reason: "标准任务，使用Qwen 7B快速响应",
-    tier: "free",
-    tokens: MODELS["qwen-7b"].maxTokens,
-  };
+  return selectModel(params);
 }

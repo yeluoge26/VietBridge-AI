@@ -1,7 +1,7 @@
 // ============================================================================
 // VietBridge AI V2 — OCR Document Analysis API
 // Analyzes OCR-extracted text from menus, receipts, contracts
-// Features: Dual auth (Session + API Key), rate limit, cost limit, caching
+// Features: Dual auth (Session + API Key + Guest), rate limit, cost limit, caching
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,6 +10,8 @@ import { ocrSchema } from "@/lib/validators/ocr";
 import { checkRateLimit, checkApiKeyRateLimit } from "@/lib/rate-limit";
 import { checkUsageQuota, logUsage } from "@/lib/usage";
 import { authenticateApiKey } from "@/lib/api-key-auth";
+import { getGuestId } from "@/lib/guest-id";
+import { checkGuestQuota, incrementGuestUsage } from "@/lib/guest-usage";
 import { checkMonthlyCostLimit, checkGlobalCostLimit } from "@/lib/cost-limit";
 import { getOcrCache, setOcrCache, type CachedOcrResult } from "@/lib/ocr-cache";
 import { estimateTokens } from "@/lib/token-estimator";
@@ -20,9 +22,10 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    // ── 1. Auth (API Key, Mobile Bearer, or Session) ─────────────────
+    // ── 1. Auth (API Key, Mobile Bearer, Session, or Guest) ─────────
     let userId: string;
     let userRole: string;
+    let isGuest = false;
     let apiKeyId: string | undefined;
     let apiKeyPrefix: string | undefined;
 
@@ -40,11 +43,18 @@ export async function POST(req: NextRequest) {
       apiKeyPrefix = apiKeyAuth.apiKeyPrefix;
     } else {
       const authUser = await getAuthUser(req);
-      if (!authUser?.id) {
-        return NextResponse.json({ error: "未登录" }, { status: 401 });
+      if (authUser?.id) {
+        userId = authUser.id;
+        userRole = authUser.role;
+      } else {
+        const guestId = getGuestId(req);
+        if (!guestId) {
+          return NextResponse.json({ error: "未登录" }, { status: 401 });
+        }
+        userId = guestId;
+        userRole = "guest";
+        isGuest = true;
       }
-      userId = authUser.id;
-      userRole = authUser.role;
     }
 
     // ── 2. Validate ───────────────────────────────────────────────────
@@ -59,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     const { ocrText, documentType } = parsed.data;
 
-    // ── 3. Rate limit (API Key vs Session) ────────────────────────────
+    // ── 3. Rate limit (API Key vs Session/Guest) ────────────────────
     if (apiKeyId && apiKeyPrefix) {
       const rateResult = await checkApiKeyRateLimit(apiKeyPrefix);
       if (!rateResult.success) {
@@ -85,44 +95,62 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 4. Quota check ────────────────────────────────────────────────
-    const quota = await checkUsageQuota(userId);
-    if (!quota.allowed) {
-      return NextResponse.json(
-        { error: "今日额度已用完", upgrade: true },
-        { status: 403 }
-      );
+    if (isGuest) {
+      const guestQuota = await checkGuestQuota(userId);
+      if (!guestQuota.allowed) {
+        return NextResponse.json(
+          { error: "今日额度已用完，注册后可获得更多额度", upgrade: true },
+          { status: 403 }
+        );
+      }
+    } else {
+      const quota = await checkUsageQuota(userId);
+      if (!quota.allowed) {
+        return NextResponse.json(
+          { error: "今日额度已用完", upgrade: true },
+          { status: 403 }
+        );
+      }
     }
 
-    // ── 4b. Monthly cost limit ────────────────────────────────────────
-    const globalCost = await checkGlobalCostLimit();
-    if (!globalCost.allowed) {
-      return NextResponse.json(
-        { error: globalCost.message },
-        { status: 503 }
-      );
-    }
-    const costCheck = await checkMonthlyCostLimit(userId);
-    if (!costCheck.allowed) {
-      return NextResponse.json(
-        { error: costCheck.upgradeMessage, upgrade: true },
-        { status: 403 }
-      );
+    // ── 4b. Monthly cost limit (skip for guests) ────────────────────
+    let costCheck: { allowed: boolean; warning?: string; shouldDowngrade: boolean; upgradeMessage?: string } = { allowed: true, shouldDowngrade: false };
+    if (!isGuest) {
+      const globalCost = await checkGlobalCostLimit();
+      if (!globalCost.allowed) {
+        return NextResponse.json(
+          { error: globalCost.message },
+          { status: 503 }
+        );
+      }
+      const cc = await checkMonthlyCostLimit(userId);
+      if (!cc.allowed) {
+        return NextResponse.json(
+          { error: cc.upgradeMessage, upgrade: true },
+          { status: 403 }
+        );
+      }
+      costCheck = cc;
     }
 
     // ── 5. Cache check ────────────────────────────────────────────────
     const cached = await getOcrCache(ocrText, documentType);
     if (cached) {
-      await logUsage({
-        userId,
-        taskType: "SCAN",
-        sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
-        modelUsed: cached.model + " (cached)",
-        tokensPrompt: 0,
-        tokensCompletion: 0,
-        cost: 0,
-        latency: Date.now() - startTime,
-        status: "ok",
-      });
+      if (isGuest) {
+        await incrementGuestUsage(userId);
+      } else {
+        await logUsage({
+          userId,
+          taskType: "SCAN",
+          sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
+          modelUsed: cached.model + " (cached)",
+          tokensPrompt: 0,
+          tokensCompletion: 0,
+          cost: 0,
+          latency: Date.now() - startTime,
+          status: "ok",
+        });
+      }
 
       return NextResponse.json({
         ...cached,
@@ -155,7 +183,7 @@ For menus: compare prices to Da Nang averages.
 For receipts: check for hidden charges.
 For contracts: identify risky clauses.`;
 
-    let isPro = userRole === "pro" || userRole === "admin";
+    let isPro = !isGuest && (userRole === "pro" || userRole === "admin");
     if (costCheck.shouldDowngrade && isPro) {
       isPro = false;
     }
@@ -200,17 +228,21 @@ For contracts: identify risky clauses.`;
     const cost =
       (tokensPrompt + tokensCompletion) * (actualProvider === "openai" ? 0.000005 : 0.000001);
 
-    await logUsage({
-      userId,
-      taskType: "SCAN",
-      sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
-      modelUsed: actualModelUsed,
-      tokensPrompt,
-      tokensCompletion,
-      cost,
-      latency,
-      status: "ok",
-    });
+    if (isGuest) {
+      await incrementGuestUsage(userId);
+    } else {
+      await logUsage({
+        userId,
+        taskType: "SCAN",
+        sceneType: documentType === "menu" ? "RESTAURANT" : "GENERAL",
+        modelUsed: actualModelUsed,
+        tokensPrompt,
+        tokensCompletion,
+        cost,
+        latency,
+        status: "ok",
+      });
+    }
 
     let data;
     try {

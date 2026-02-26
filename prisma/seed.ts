@@ -275,7 +275,12 @@ async function main() {
     update: {},
     create: {
       id: "seed_prompt_v1",
+      task: "TRANSLATION",
+      scene: "GENERAL",
       version: "v1.0",
+      systemPrompt: "你是 VietBridge AI，专业的越南-中国跨境商务助手。",
+      taskPrompt: "执行任务：中越双语翻译",
+      scenePrompt: "场景：通用沟通",
       changes: "初始版本: 7层Prompt架构 (系统/记忆/任务/场景/语气/上下文/输入)",
       status: "active",
     },

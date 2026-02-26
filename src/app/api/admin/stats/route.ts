@@ -14,13 +14,14 @@ export async function GET() {
     return NextResponse.json({ error: "无权限" }, { status: 403 });
   }
 
+  try {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const sevenDaysAgo = new Date(todayStart.getTime() - 7 * 86400000);
   const yesterday = new Date(todayStart.getTime() - 86400000);
   const eightDaysAgo = new Date(todayStart.getTime() - 8 * 86400000);
 
-  const [totalUsers, todayLogs, weekLogs, totalCost, d1Cohort, d7Cohort, todayActiveUsers] = await Promise.all([
+  const [totalUsers, todayLogs, weekLogs, totalCost, d1Cohort, d7Cohort, todayActiveUsers, knowledgeCount, promptCount, riskRuleCount, totalCallsCount, courseCount, newUsersToday, dau7Users, freeSubCount, paidSubCount] = await Promise.all([
     prisma.user.count(),
     prisma.llmLog.count({ where: { createdAt: { gte: todayStart }, deleted: false } }),
     prisma.llmLog.findMany({
@@ -47,6 +48,24 @@ export async function GET() {
       distinct: ["userId"],
       select: { userId: true },
     }),
+    // Additional counts for dashboard
+    prisma.knowledgeEntry.count(),
+    prisma.promptVersion.count(),
+    prisma.riskRule.count({ where: { active: true } }),
+    prisma.llmLog.count({ where: { deleted: false } }),
+    prisma.course.count(),
+    // New users registered today
+    prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
+    // DAU7: distinct users with usageLog in last 7 days
+    prisma.usageLog.findMany({
+      where: { createdAt: { gte: sevenDaysAgo } },
+      distinct: ["userId"],
+      select: { userId: true },
+    }),
+    // Free plan subscriptions
+    prisma.subscription.count({ where: { plan: "FREE" } }),
+    // Paid plan subscriptions (PRO + API)
+    prisma.subscription.count({ where: { plan: { in: ["PRO", "API"] } } }),
   ]);
 
   // Daily trend
@@ -97,6 +116,15 @@ export async function GET() {
       todayCalls: todayLogs,
       weekCalls: weekLogs.length,
       totalCost: totalCost._sum.cost || 0,
+      knowledgeCount,
+      promptCount,
+      riskRuleCount,
+      totalCalls: totalCallsCount,
+      courseCount,
+      newUsersToday,
+      dau7: dau7Users.length,
+      freeUsers: freeSubCount,
+      paidUsers: paidSubCount,
     },
     dailyTrend: Array.from(dailyMap.entries()).map(([date, data]) => ({ date, ...data })),
     taskDistribution: Object.entries(taskDist).map(([task, count]) => ({ task, count })),
@@ -114,4 +142,8 @@ export async function GET() {
       },
     },
   });
+  } catch (err) {
+    console.error("[Stats GET]", err);
+    return NextResponse.json({ error: "获取统计数据失败" }, { status: 500 });
+  }
 }

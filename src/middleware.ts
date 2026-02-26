@@ -1,6 +1,6 @@
 // ============================================================================
 // VietBridge AI V2 — Route Protection Middleware
-// Protects /app/* (auth required) and /admin/* (admin role required)
+// /app/* is open (guests allowed), /admin/* requires admin role
 // Compatible with Next.js 16 — uses explicit function export
 // ============================================================================
 
@@ -11,8 +11,8 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const { pathname } = req.nextUrl;
 
-  // ── Protect /app/* and /admin/* — require authentication ───────────────
-  if ((pathname.startsWith("/app") || pathname.startsWith("/admin")) && !token) {
+  // ── /admin/* requires authentication ───────────────────────────────────
+  if (pathname.startsWith("/admin") && !token) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 

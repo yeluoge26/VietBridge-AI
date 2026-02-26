@@ -53,7 +53,7 @@ export const createRiskRuleSchema = z.object({
   name: z.string().max(200).optional(),
   category: z.string().min(1).max(100),
   weight: z.number().min(0).max(100).optional().default(10),
-  severity: z.enum(["low", "medium", "high", "critical"]).optional().default("medium"),
+  severity: z.enum(["low", "medium", "high", "critical", "criminal"]).optional().default("medium"),
   action: z.enum(["warn", "block", "review"]).optional().default("warn"),
   active: z.boolean().optional().default(true),
 });
@@ -64,7 +64,7 @@ export const updateRiskRuleSchema = z.object({
   name: z.string().max(200).optional(),
   category: z.string().min(1).max(100).optional(),
   weight: z.number().min(0).max(100).optional(),
-  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  severity: z.enum(["low", "medium", "high", "critical", "criminal"]).optional(),
   action: z.enum(["warn", "block", "review"]).optional(),
   active: z.boolean().optional(),
 });
@@ -72,7 +72,7 @@ export const updateRiskRuleSchema = z.object({
 // ── Model Router ───────────────────────────────────────────────────────────
 
 const taskTypeEnum = z.enum(["TRANSLATION", "REPLY", "RISK", "LEARN", "SCAN"]);
-const sceneTypeEnum = z.enum(["GENERAL", "BUSINESS", "STAFF", "COUPLE", "RESTAURANT", "RENT", "HOSPITAL", "REPAIR"]);
+const sceneTypeEnum = z.enum(["GENERAL", "BUSINESS", "STAFF", "COUPLE", "RESTAURANT", "RENT", "HOSPITAL", "HOUSEKEEPING"]);
 
 export const createRouterSchema = z.object({
   taskType: taskTypeEnum,
@@ -82,6 +82,7 @@ export const createRouterSchema = z.object({
   maxCost: z.number().min(0).optional().default(0.01),
   maxLatency: z.number().min(0).optional().default(3000),
   active: z.boolean().optional().default(true),
+  userLevel: z.number().int().min(0).max(6).optional().default(0),
 });
 
 export const updateRouterSchema = z.object({
@@ -91,4 +92,5 @@ export const updateRouterSchema = z.object({
   maxCost: z.number().min(0).optional(),
   maxLatency: z.number().min(0).optional(),
   active: z.boolean().optional(),
+  userLevel: z.number().int().min(0).max(6).optional(),
 });

@@ -9,7 +9,6 @@ import { prisma } from "./prisma";
 const MONTHLY_COST_LIMITS: Record<string, number> = {
   FREE: 1,
   PRO: 50,
-  ENTERPRISE: 500,
   API: 1000,
 };
 

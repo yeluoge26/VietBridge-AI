@@ -14,6 +14,8 @@ interface User {
   role: string;
   subscription: UserSubscription | null;
   usageCount: number;
+  userLevel: number;
+  totalCalls: number;
 }
 
 interface Pagination {
@@ -29,11 +31,27 @@ interface Funnel {
   paid: number;
 }
 
+interface LevelCount {
+  level: number;
+  count: number;
+}
+
 interface ApiResponse {
   users: User[];
   pagination: Pagination;
   funnel: Funnel;
+  levelDistribution?: LevelCount[];
 }
+
+/* ── Level badge styles ── */
+const LEVEL_STYLES: Record<number, { color: string; bg: string }> = {
+  1: { color: "#8B8B99", bg: "#8B8B9920" },
+  2: { color: "#22C55E", bg: "#22C55E20" },
+  3: { color: "#3B82F6", bg: "#3B82F620" },
+  4: { color: "#A855F7", bg: "#A855F720" },
+  5: { color: "#F97316", bg: "#F9731620" },
+  6: { color: "#EF4444", bg: "#EF444420" },
+};
 
 /* ── Plan colors ── */
 const planColors: Record<string, { color: string; bg: string }> = {
@@ -62,6 +80,7 @@ export default function UsersPage({ toast }: UsersPageProps) {
   });
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [levelDistribution, setLevelDistribution] = useState<LevelCount[]>([]);
 
   const fetchUsers = useCallback(
     async (page: number) => {
@@ -75,6 +94,7 @@ export default function UsersPage({ toast }: UsersPageProps) {
         setUsers(data.users);
         setPagination(data.pagination);
         setFunnel(data.funnel);
+        setLevelDistribution(data.levelDistribution || []);
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Unknown error loading users";
@@ -154,6 +174,32 @@ export default function UsersPage({ toast }: UsersPageProps) {
         </span>
       </div>
 
+      {/* ── 用户级别分布 ── */}
+      <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-5">
+        <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-4">用户级别分布</h3>
+        <div className="grid grid-cols-6 gap-3">
+          {[1, 2, 3, 4, 5, 6].map((level) => {
+            const ls = LEVEL_STYLES[level] || { color: "#8B8B99", bg: "#8B8B9920" };
+            const item = levelDistribution.find((d) => d.level === level);
+            const count = item?.count || 0;
+            return (
+              <div
+                key={level}
+                className="rounded-lg p-3 text-center"
+                style={{ backgroundColor: ls.bg, border: `1px solid ${ls.color}30` }}
+              >
+                <div className="text-[12px] font-bold" style={{ color: ls.color }}>
+                  L{level}
+                </div>
+                <div className="text-[18px] font-bold text-[#EAEAEF] mt-1">
+                  {count.toLocaleString()}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── 漏斗可视化 ── */}
       <div className="bg-[#18181C] border border-[#2A2A35] rounded-xl p-5">
         <h3 className="text-[13px] font-semibold text-[#EAEAEF] mb-4">
@@ -211,7 +257,7 @@ export default function UsersPage({ toast }: UsersPageProps) {
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr className="border-b border-[#2A2A35]">
-                    {["用户", "邮箱", "计划", "使用次数", "注册时间"].map(
+                    {["用户", "邮箱", "计划", "级别", "使用次数", "角色"].map(
                       (h) => (
                         <th
                           key={h}
@@ -255,6 +301,20 @@ export default function UsersPage({ toast }: UsersPageProps) {
                           >
                             {plan}
                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const lvl = u.userLevel || 1;
+                            const ls = LEVEL_STYLES[lvl] || LEVEL_STYLES[1];
+                            return (
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                style={{ color: ls.color, backgroundColor: ls.bg }}
+                              >
+                                L{lvl}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">
                           {u.usageCount.toLocaleString()}

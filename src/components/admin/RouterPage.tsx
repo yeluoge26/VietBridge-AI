@@ -19,6 +19,7 @@ interface RouteRecord {
   fallbackModel: string;
   maxCost: number;
   maxLatency: number;
+  userLevel: number;
   active: boolean;
 }
 
@@ -35,13 +36,28 @@ const costGuards: CostGuard[] = [
   { id: "cg3", label: "超时限制", value: "5000", unit: "ms", color: "#3B82F6" },
 ];
 
-const taskColors: Record<string, { color: string; bg: string }> = {
-  翻译: { color: "#3B82F6", bg: "#3B82F620" },
-  回复: { color: "#A855F7", bg: "#A855F720" },
-  风险: { color: "#EF4444", bg: "#EF444420" },
-  教学: { color: "#22C55E", bg: "#22C55E20" },
-  扫描: { color: "#FBBF24", bg: "#FBBF2420" },
+const TASK_CN: Record<string, string> = {
+  TRANSLATION: "翻译", REPLY: "回复", RISK: "风险", LEARN: "教学", SCAN: "扫描",
 };
+const SCENE_CN: Record<string, string> = {
+  GENERAL: "通用", BUSINESS: "商务", STAFF: "员工", COUPLE: "情侣",
+  RENT: "租房", RESTAURANT: "餐厅", HOSPITAL: "医院", HOUSEKEEPING: "家政",
+};
+const taskColors: Record<string, { color: string; bg: string }> = {
+  TRANSLATION: { color: "#3B82F6", bg: "#3B82F620" },
+  REPLY: { color: "#A855F7", bg: "#A855F720" },
+  RISK: { color: "#EF4444", bg: "#EF444420" },
+  LEARN: { color: "#22C55E", bg: "#22C55E20" },
+  SCAN: { color: "#FBBF24", bg: "#FBBF2420" },
+};
+
+const LEVEL_LABELS: Record<number, string> = {
+  0: "全部", 1: "L1", 2: "L2", 3: "L3", 4: "L4", 5: "L5", 6: "L6",
+};
+
+const TASK_OPTIONS = Object.entries(TASK_CN).map(([value, label]) => ({ value, label }));
+const SCENE_OPTIONS = Object.entries(SCENE_CN).map(([value, label]) => ({ value, label }));
+const LEVEL_OPTIONS = Object.entries(LEVEL_LABELS).map(([value, label]) => ({ value: Number(value), label }));
 
 const fallbackChain: FallbackNode[] = [
   { label: "Primary", sublabel: "主模型", color: "#3B82F6" },
@@ -49,6 +65,18 @@ const fallbackChain: FallbackNode[] = [
   { label: "Emergency", sublabel: "应急模型", color: "#FBBF24" },
   { label: "Reject", sublabel: "拒绝请求", color: "#EF4444" },
 ];
+
+/* ── Default form values for modal ── */
+const EMPTY_FORM = {
+  taskType: "TRANSLATION",
+  sceneType: "GENERAL",
+  primaryModel: "",
+  fallbackModel: "",
+  maxCost: 0.003,
+  maxLatency: 1000,
+  userLevel: 0,
+  active: true,
+};
 
 interface RouterPageProps {
   toast: (msg: string) => void;
@@ -58,6 +86,13 @@ export default function RouterPage({ toast }: RouterPageProps) {
   const [routes, setRoutes] = useState<RouteRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingGuard, setEditingGuard] = useState<string | null>(null);
+
+  /* ── Modal state ── */
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const [modalRouteId, setModalRouteId] = useState<string | null>(null);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [saving, setSaving] = useState(false);
 
   const fetchRoutes = useCallback(async () => {
     try {
@@ -106,27 +141,56 @@ export default function RouterPage({ toast }: RouterPageProps) {
     }
   };
 
-  const handleCreateRoute = async () => {
+  const openCreateModal = () => {
+    setModalMode("create");
+    setModalRouteId(null);
+    setForm({ ...EMPTY_FORM });
+    setModalOpen(true);
+  };
+
+  const openEditModal = (r: RouteRecord) => {
+    setModalMode("edit");
+    setModalRouteId(r.id);
+    setForm({
+      taskType: r.taskType,
+      sceneType: r.sceneType,
+      primaryModel: r.primaryModel,
+      fallbackModel: r.fallbackModel,
+      maxCost: r.maxCost,
+      maxLatency: r.maxLatency,
+      userLevel: r.userLevel ?? 0,
+      active: r.active,
+    });
+    setModalOpen(true);
+  };
+
+  const handleModalSave = async () => {
+    setSaving(true);
     try {
-      const res = await fetch("/api/admin/router", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskType: "翻译",
-          sceneType: "通用",
-          primaryModel: "Qwen 7B",
-          fallbackModel: "Qwen 14B",
-          maxCost: 0.003,
-          maxLatency: 1000,
-          active: true,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to create route");
-      toast("新路由已创建");
+      if (modalMode === "edit" && modalRouteId) {
+        const res = await fetch("/api/admin/router", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: modalRouteId, ...form }),
+        });
+        if (!res.ok) throw new Error("Failed to update route");
+        toast("路由已更新");
+      } else {
+        const res = await fetch("/api/admin/router", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
+        if (!res.ok) throw new Error("Failed to create route");
+        toast("新路由已创建");
+      }
+      setModalOpen(false);
       fetchRoutes();
     } catch (err) {
       console.error(err);
-      toast("创建路由失败");
+      toast(modalMode === "edit" ? "更新路由失败" : "创建路由失败");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -155,7 +219,7 @@ export default function RouterPage({ toast }: RouterPageProps) {
       <div className="flex items-center justify-between">
         <h2 className="text-[16px] font-bold text-[#EAEAEF]">模型路由控制</h2>
         <button
-          onClick={handleCreateRoute}
+          onClick={openCreateModal}
           className="px-3 py-1.5 bg-[#3B82F6] rounded-lg text-[11px] font-medium text-white hover:bg-[#3B82F6]/90 transition-all cursor-pointer"
         >
           + 新增路由
@@ -205,7 +269,7 @@ export default function RouterPage({ toast }: RouterPageProps) {
             <table className="w-full" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr className="border-b border-[#2A2A35]">
-                  {["任务", "场景", "主模型", "备选模型", "最大成本", "最大延迟", "状态"].map((h) => (
+                  {["任务", "场景", "级别", "主模型", "备选模型", "最大成本", "最大延迟", "状态", "操作"].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-3 text-left text-[10px] font-medium text-[#55556A] uppercase tracking-wider"
@@ -225,10 +289,15 @@ export default function RouterPage({ toast }: RouterPageProps) {
                           className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
                           style={{ color: tc.color, backgroundColor: tc.bg }}
                         >
-                          {r.taskType}
+                          {TASK_CN[r.taskType] || r.taskType}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">{r.sceneType}</td>
+                      <td className="px-4 py-3 text-[12px] text-[#EAEAEF]">{SCENE_CN[r.sceneType] || r.sceneType}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium text-[#8B8B99] bg-[#27272F]">
+                          {LEVEL_LABELS[r.userLevel ?? 0] || `L${r.userLevel}`}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-[12px] text-[#EAEAEF] font-mono">{r.primaryModel}</td>
                       <td className="px-4 py-3 text-[12px] text-[#8B8B99] font-mono">{r.fallbackModel}</td>
                       <td className="px-4 py-3 text-[12px] text-[#FBBF24]">{formatCost(r.maxCost)}</td>
@@ -247,6 +316,14 @@ export default function RouterPage({ toast }: RouterPageProps) {
                               r.active ? "translate-x-4" : "translate-x-0"
                             }`}
                           />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openEditModal(r)}
+                          className="rounded px-2 py-1 text-[11px] text-[#3B82F6] border border-[#3B82F6]/30 hover:bg-[#3B82F6]/10 cursor-pointer"
+                        >
+                          编辑
                         </button>
                       </td>
                     </tr>
@@ -297,6 +374,139 @@ export default function RouterPage({ toast }: RouterPageProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Edit / Create Modal ── */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setModalOpen(false)}>
+          <div className="w-[560px] max-h-[85vh] overflow-y-auto rounded-xl border border-[#27272F] bg-[#18181C] p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[16px] font-bold text-[#EAEAEF]">
+                {modalMode === "edit" ? "编辑路由" : "新增路由"}
+              </h2>
+              <button onClick={() => setModalOpen(false)} className="text-[#55556A] hover:text-[#EAEAEF] text-lg cursor-pointer">
+                x
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Row: taskType + sceneType */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] text-[#8B8B99] mb-1">任务类型</label>
+                  <select
+                    value={form.taskType}
+                    onChange={(e) => setForm({ ...form, taskType: e.target.value })}
+                    className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                  >
+                    {TASK_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-[#8B8B99] mb-1">场景类型</label>
+                  <select
+                    value={form.sceneType}
+                    onChange={(e) => setForm({ ...form, sceneType: e.target.value })}
+                    className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                  >
+                    {SCENE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Row: primaryModel + fallbackModel */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] text-[#8B8B99] mb-1">主模型</label>
+                  <input
+                    value={form.primaryModel}
+                    onChange={(e) => setForm({ ...form, primaryModel: e.target.value })}
+                    className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                    placeholder="例: Qwen 7B"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-[#8B8B99] mb-1">备选模型</label>
+                  <input
+                    value={form.fallbackModel}
+                    onChange={(e) => setForm({ ...form, fallbackModel: e.target.value })}
+                    className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                    placeholder="例: Qwen 14B"
+                  />
+                </div>
+              </div>
+
+              {/* Row: maxCost + maxLatency */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] text-[#8B8B99] mb-1">最大成本 ($)</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={form.maxCost}
+                    onChange={(e) => setForm({ ...form, maxCost: parseFloat(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-[#8B8B99] mb-1">最大延迟 (ms)</label>
+                  <input
+                    type="number"
+                    step="100"
+                    value={form.maxLatency}
+                    onChange={(e) => setForm({ ...form, maxLatency: parseInt(e.target.value) || 0 })}
+                    className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                  />
+                </div>
+              </div>
+
+              {/* Row: userLevel */}
+              <div>
+                <label className="block text-[11px] text-[#8B8B99] mb-1">用户级别</label>
+                <select
+                  value={form.userLevel}
+                  onChange={(e) => setForm({ ...form, userLevel: Number(e.target.value) })}
+                  className="w-full rounded-lg border border-[#27272F] bg-[#0C0C0F] px-3 py-2 text-[12px] text-[#EAEAEF]"
+                >
+                  {LEVEL_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label} {o.value === 0 ? "(所有用户)" : ""}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Active checkbox */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                  className="rounded"
+                />
+                <span className="text-[12px] text-[#8B8B99]">启用路由</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setModalOpen(false)}
+                className="rounded-lg border border-[#27272F] px-4 py-2 text-[12px] text-[#8B8B99] hover:bg-[#27272F] cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleModalSave}
+                disabled={saving}
+                className="rounded-lg bg-[#3B82F6] px-4 py-2 text-[12px] font-medium text-white hover:bg-[#2563EB] disabled:opacity-50 cursor-pointer"
+              >
+                {saving ? "保存中..." : modalMode === "edit" ? "更新" : "创建"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

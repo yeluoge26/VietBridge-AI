@@ -29,10 +29,11 @@ class MainActivity : ComponentActivity() {
 
                 when {
                     authState.isLoading -> SplashScreen()
-                    authState.isAuthenticated -> MainScreen(
-                        onSignOut = { authViewModel.signOut() }
+                    else -> MainScreen(
+                        isGuest = authState.isGuest,
+                        authViewModel = authViewModel,
+                        onSignOut = { authViewModel.signOut() },
                     )
-                    else -> AuthScreen(viewModel = authViewModel)
                 }
             }
         }

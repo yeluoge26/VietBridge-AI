@@ -12,6 +12,7 @@ const PAGE_ROUTES: Record<string, string> = {
   dash: "/admin",
   kb: "/admin/knowledge",
   prompt: "/admin/prompts",
+  course: "/admin/courses",
   router: "/admin/router",
   logs: "/admin/logs",
   risk: "/admin/risk",

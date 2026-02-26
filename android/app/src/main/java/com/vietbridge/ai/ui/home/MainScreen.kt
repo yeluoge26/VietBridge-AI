@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.vietbridge.ai.ui.auth.AuthViewModel
 import com.vietbridge.ai.ui.learn.LearnTab
 import com.vietbridge.ai.ui.profile.ProfileTab
 import com.vietbridge.ai.ui.scan.ScanTab
@@ -27,7 +28,7 @@ private val navItems = listOf(
 )
 
 @Composable
-fun MainScreen(onSignOut: () -> Unit) {
+fun MainScreen(isGuest: Boolean, authViewModel: AuthViewModel, onSignOut: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
@@ -56,7 +57,7 @@ fun MainScreen(onSignOut: () -> Unit) {
             0 -> HomeTab(Modifier.padding(padding))
             1 -> ScanTab(Modifier.padding(padding))
             2 -> LearnTab(Modifier.padding(padding))
-            3 -> ProfileTab(Modifier.padding(padding), onSignOut = onSignOut)
+            3 -> ProfileTab(Modifier.padding(padding), isGuest = isGuest, authViewModel = authViewModel, onSignOut = onSignOut)
         }
     }
 }

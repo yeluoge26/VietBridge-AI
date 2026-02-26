@@ -1,13 +1,12 @@
 // ============================================================================
 // VietBridge AI V2 — Admin Prompts API
-// CRUD for prompt versions
+// CRUD for prompt versions with task/scene filtering
 // ============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { createPromptSchema, updatePromptSchema } from "@/lib/validators/admin";
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -15,12 +14,21 @@ async function requireAdmin() {
   return session;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
+  const { searchParams } = new URL(req.url);
+  const task = searchParams.get("task");
+  const scene = searchParams.get("scene");
+
+  const where: Record<string, unknown> = {};
+  if (task) where.task = task;
+  if (scene) where.scene = scene;
+
   const versions = await prisma.promptVersion.findMany({
-    orderBy: { createdAt: "desc" },
+    where,
+    orderBy: [{ task: "asc" }, { scene: "asc" }, { createdAt: "desc" }],
   });
   return NextResponse.json(versions);
 }
@@ -29,22 +37,18 @@ export async function POST(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const raw = await req.json();
-  const parsed = createPromptSchema.safeParse(raw);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "参数错误", details: parsed.error.issues.map((i) => i.message) }, { status: 400 });
-  }
-  const body = parsed.data;
-
-  const latest = await prisma.promptVersion.findFirst({ orderBy: { version: "desc" } });
-  const latestNum = latest ? parseInt(latest.version.replace(/\D/g, "") || "0", 10) : 0;
-  const nextVersion = `v${latestNum + 1}.0`;
+  const body = await req.json();
 
   const version = await prisma.promptVersion.create({
     data: {
-      version: body.version || nextVersion,
-      changes: body.changes || "",
-      status: body.status,
+      task: body.task || "TRANSLATION",
+      scene: body.scene || "GENERAL",
+      version: body.version || "v1.0",
+      systemPrompt: body.systemPrompt || "",
+      taskPrompt: body.taskPrompt || "",
+      scenePrompt: body.scenePrompt || "",
+      changes: body.changes || "新建",
+      status: body.status || "draft",
       abGroup: body.abGroup || null,
     },
   });
@@ -55,22 +59,34 @@ export async function PUT(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const raw = await req.json();
-  const parsed = updatePromptSchema.safeParse(raw);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "参数错误", details: parsed.error.issues.map((i) => i.message) }, { status: 400 });
+  const body = await req.json();
+  if (!body.id) {
+    return NextResponse.json({ error: "缺少 id" }, { status: 400 });
   }
-  const body = parsed.data;
+
+  const data: Record<string, unknown> = {};
+  if (body.systemPrompt !== undefined) data.systemPrompt = body.systemPrompt;
+  if (body.taskPrompt !== undefined) data.taskPrompt = body.taskPrompt;
+  if (body.scenePrompt !== undefined) data.scenePrompt = body.scenePrompt;
+  if (body.status !== undefined) data.status = body.status;
+  if (body.changes !== undefined) data.changes = body.changes;
+  if (body.abGroup !== undefined) data.abGroup = body.abGroup;
 
   const version = await prisma.promptVersion.update({
     where: { id: body.id },
-    data: {
-      changes: body.changes,
-      status: body.status,
-      abGroup: body.abGroup,
-      accuracyScore: body.accuracyScore,
-      satisfactionScore: body.satisfactionScore,
-    },
+    data,
   });
   return NextResponse.json(version);
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: "无权限" }, { status: 403 });
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "缺少 id" }, { status: 400 });
+
+  await prisma.promptVersion.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
 }

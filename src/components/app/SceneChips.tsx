@@ -16,7 +16,7 @@ const scenes = [
   { id: "restaurant", icon: "\uD83C\uDF7D\uFE0F", label: "餐厅", color: "#FF8A00" },
   { id: "rent", icon: "\uD83C\uDFE0", label: "租房", color: "#1565C0" },
   { id: "hospital", icon: "\uD83C\uDFE5", label: "医院", color: "#E53935" },
-  { id: "repair", icon: "\uD83D\uDD27", label: "装修", color: "#795548" },
+  { id: "housekeeping", icon: "\uD83E\uDDF9", label: "家政", color: "#795548" },
 ];
 
 export default function SceneChips({

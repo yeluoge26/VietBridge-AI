@@ -22,7 +22,7 @@ export default function FooterCTA() {
                 className="w-52 bg-gradient-to-r from-[#3B82F6] to-[#A855F7] text-white hover:opacity-90"
                 asChild
               >
-                <Link href="/register">免费注册</Link>
+                <Link href="/app">立即使用</Link>
               </Button>
               <Button
                 size="lg"

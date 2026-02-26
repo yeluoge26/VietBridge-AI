@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+body {
+  font-family: "DM Sans", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  background-color: #09090B;
+  color: #FAFAFA;
+}
+
+code, pre {
+  font-family: "JetBrains Mono", monospace;
+}
+
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }

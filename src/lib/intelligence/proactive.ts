@@ -165,12 +165,12 @@ export function checkProactiveWarnings(
     }
   }
 
-  // --- Repair warnings ---
-  if (scene === "repair") {
-    if (/报价|价格|多少钱|bao nhiêu|giá/.test(lowerInput)) {
+  // --- Housekeeping warnings ---
+  if (scene === "housekeeping") {
+    if (/报价|价格|多少钱|bao nhiêu|giá|工资|lương/.test(lowerInput)) {
       warnings.push({
         type: "tip",
-        text: "维修前一定要先拿到书面报价。建议找2-3家比价。可以请越南朋友帮忙沟通以获得更合理价格。",
+        text: "家政服务建议先了解岘港市场行情。钟点工约30-50K/小时，全天约200-300K。签合同前明确工作内容和薪酬。",
       });
     }
   }

@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import Metric from "./Metric";
 import {
-  AreaChart,
+  ComposedChart,
   Area,
   BarChart,
   Bar,
   PieChart,
   Pie,
-  LineChart,
   Line,
   ResponsiveContainer,
   XAxis,
@@ -25,6 +24,15 @@ interface KPIs {
   todayCalls: number;
   weekCalls: number;
   totalCost: number;
+  knowledgeCount: number;
+  promptCount: number;
+  riskRuleCount: number;
+  totalCalls: number;
+  courseCount: number;
+  newUsersToday: number;
+  dau7: number;
+  freeUsers: number;
+  paidUsers: number;
 }
 
 interface DailyTrend {
@@ -178,7 +186,7 @@ export default function DashPage() {
 
   // Computed summary stats
   const avgCostPerCall =
-    kpis.weekCalls > 0 ? (kpis.totalCost / kpis.weekCalls).toFixed(4) : "0";
+    kpis.totalCalls > 0 ? (kpis.totalCost / kpis.totalCalls).toFixed(4) : "0";
   const avgLatency =
     modelStats.length > 0
       ? Math.round(
@@ -187,17 +195,58 @@ export default function DashPage() {
         )
       : 0;
 
-  // RAG hit rate: not directly available from API, show N/A
-  const ragHitRate = "N/A";
-
   return (
     <div className="space-y-6">
-      {/* ── KPI Row 1 ── */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* ── KPI Row 0: User Overview ── */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Metric
+          label="新增用户(今日)"
+          value={kpis.newUsersToday.toLocaleString()}
+        />
+        <Metric
+          label="7日活跃"
+          value={kpis.dau7.toLocaleString()}
+        />
+        <Metric
+          label="免费用户"
+          value={kpis.freeUsers.toLocaleString()}
+        />
+        <Metric
+          label="付费用户"
+          value={kpis.paidUsers.toLocaleString()}
+        />
+      </div>
+
+      {/* ── KPI Row 1: Core Stats ── */}
+      <div className="grid grid-cols-3 gap-4 md:grid-cols-6">
         <Metric
           label="总用户数"
           value={kpis.totalUsers.toLocaleString()}
         />
+        <Metric
+          label="知识库条目"
+          value={kpis.knowledgeCount.toLocaleString()}
+        />
+        <Metric
+          label="Prompt 模板"
+          value={kpis.promptCount.toLocaleString()}
+        />
+        <Metric
+          label="风控规则"
+          value={kpis.riskRuleCount.toLocaleString()}
+        />
+        <Metric
+          label="课程数量"
+          value={kpis.courseCount.toLocaleString()}
+        />
+        <Metric
+          label="总调用次数"
+          value={kpis.totalCalls.toLocaleString()}
+        />
+      </div>
+
+      {/* ── KPI Row 2: Operational ── */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Metric
           label="今日调用"
           value={kpis.todayCalls.toLocaleString()}
@@ -211,28 +260,10 @@ export default function DashPage() {
           value={kpis.totalCost.toFixed(2)}
           prefix="$"
         />
-      </div>
-
-      {/* ── KPI Row 2 ── */}
-      <div className="grid grid-cols-4 gap-4">
-        <Metric
-          label="RAG 命中率"
-          value={ragHitRate}
-          suffix={ragHitRate !== "N/A" ? "%" : undefined}
-        />
-        <Metric
-          label="模型数量"
-          value={modelStats.length.toString()}
-        />
         <Metric
           label="平均延迟"
           value={avgLatency.toString()}
           suffix="ms"
-        />
-        <Metric
-          label="单次成本"
-          value={avgCostPerCall}
-          prefix="$"
         />
       </div>
 
@@ -244,7 +275,7 @@ export default function DashPage() {
             每日趋势
           </h3>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={trendData}>
+            <ComposedChart data={trendData}>
               <defs>
                 <linearGradient id="callsGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.3} />
@@ -290,7 +321,7 @@ export default function DashPage() {
                 dot={false}
                 name="成本($)"
               />
-            </AreaChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
 

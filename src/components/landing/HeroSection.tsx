@@ -44,7 +44,7 @@ export default function HeroSection() {
               className="w-52 bg-gradient-to-r from-[#3B82F6] to-[#A855F7] text-white shadow-lg hover:opacity-90"
               asChild
             >
-              <Link href="/register">免费开始使用</Link>
+              <Link href="/app">免费开始使用</Link>
             </Button>
             <Button size="lg" variant="outline" className="w-52" asChild>
               <Link href="#features">了解功能</Link>

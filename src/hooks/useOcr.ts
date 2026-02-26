@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { getClientGuestId } from "@/hooks/useGuestId";
 
 interface OcrResult {
   type: string;
@@ -23,9 +24,13 @@ export function useOcr() {
       setError(null);
 
       try {
+        const guestId = getClientGuestId();
         const res = await fetch("/api/ocr/analyze", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(guestId ? { "X-Guest-Id": guestId } : {}),
+          },
           body: JSON.stringify({ ocrText, documentType }),
         });
 

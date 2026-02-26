@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+admin/node_modules
+h5/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -19,6 +21,8 @@
 
 # production
 /build
+admin/dist
+h5/dist
 
 # misc
 .DS_Store
@@ -47,6 +51,12 @@ android/app/build/
 android/build/
 *.apk
 *.aab
+
+# H5 Capacitor Android
+h5/android/.gradle/
+h5/android/app/build/
+h5/android/build/
+h5/android/local.properties
 
 # iOS
 ios/VietBridge.xcodeproj/xcuserdata/

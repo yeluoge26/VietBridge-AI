@@ -26,7 +26,7 @@ export type SceneId =
   | "restaurant"
   | "rent"
   | "hospital"
-  | "repair";
+  | "housekeeping";
 
 export const SCENES: Scene[] = [
   { id: "general", label: "通用", emoji: "🌍" },
@@ -36,7 +36,7 @@ export const SCENES: Scene[] = [
   { id: "restaurant", label: "餐厅点餐", emoji: "🍜" },
   { id: "rent", label: "租房", emoji: "🏠" },
   { id: "hospital", label: "看病就医", emoji: "🏥" },
-  { id: "repair", label: "维修服务", emoji: "🔧" },
+  { id: "housekeeping", label: "家政服务", emoji: "🧹" },
 ];
 
 export const SCENE_COLORS: Record<SceneId, string> = {
@@ -47,7 +47,7 @@ export const SCENE_COLORS: Record<SceneId, string> = {
   restaurant: "#E65100",
   rent: "#4527A0",
   hospital: "#00838F",
-  repair: "#795548",
+  housekeeping: "#795548",
 };
 
 export const SCENE_RULES: Record<SceneId, SceneRule> = {
@@ -114,13 +114,13 @@ export const SCENE_RULES: Record<SceneId, SceneRule> = {
     promptRule:
       "使用医疗相关越南语。症状描述要准确（如đau đầu头痛, sốt发烧, ho咳嗽）。称呼医生为bác sĩ，护士为y tá/điều dưỡng。必须使用敬语。了解越南医疗系统流程（挂号→检查→开药→取药）。药品名称尽量使用通用名。紧急情况的常用表达要准确。身体部位和症状词汇要精确。",
   },
-  repair: {
+  housekeeping: {
     pronounSelf: "tôi/mình",
-    pronounOther: "anh (师傅)",
-    toneDesc: "日常友好，请师傅修东西",
-    particles: ["ơi", "giúp", "với", "được không"],
+    pronounOther: "chị/em (阿姨/保姆)",
+    toneDesc: "日常友好，家政沟通",
+    particles: ["ơi", "giúp", "với", "nhé"],
     formality: "casual",
     promptRule:
-      "使用维修服务相关越南语。称呼师傅通常用anh。描述故障要具体（如hỏng坏了, bị rò rỉ漏水, không hoạt động不工作）。讨论价格时注意岘港本地行情。了解常见家电家具的越南语名称。请求帮助用giúp/với。谈价时可以适当还价但要合理。注意越南维修行业的收费习惯。",
+      "使用家政服务相关越南语。称呼家政人员通常用chị/em。工作安排要清晰（如lau nhà拖地, giặt đồ洗衣, nấu ăn做饭, dọn dẹp打扫）。讨论薪资用lương/tiền công。了解岘港家政市场行情。时间安排用giờ/buổi。注意越南家政文化中的礼貌用语。沟通清洁标准和注意事项时要具体明确。",
   },
 };

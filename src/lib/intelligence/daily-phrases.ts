@@ -73,7 +73,7 @@ export const DAILY_PHRASES: DailyPhrase[] = [
     zh: "修这个要多少钱？",
     pinyin: "sửa cái này hết bao nhiêu tiền?",
     culture: "\"sửa\" 是修理。记得维修前先问价，\"hết\" 表示总共",
-    scene: "repair",
+    scene: "housekeeping",
   },
   {
     vi: "Tháng này lương của em được bao nhiêu?",

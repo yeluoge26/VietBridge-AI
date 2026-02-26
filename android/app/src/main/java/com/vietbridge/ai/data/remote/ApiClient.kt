@@ -28,7 +28,15 @@ object ApiClient {
         val request = chain.request().newBuilder().apply {
             header("User-Agent", "VietBridge-Android/1.0")
             header("Content-Type", "application/json")
-            tokenManager?.token?.let { header("Authorization", "Bearer $it") }
+            val tm = tokenManager
+            if (tm != null) {
+                val t = tm.token
+                if (t != null) {
+                    header("Authorization", "Bearer $t")
+                } else {
+                    header("X-Guest-Id", tm.guestId)
+                }
+            }
         }.build()
         chain.proceed(request)
     }

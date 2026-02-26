@@ -25,7 +25,7 @@ const sceneMeta: Record<string, { label: string; color: string }> = {
   restaurant: { label: "餐厅", color: "#FF8A00" },
   rent: { label: "租房", color: "#1565C0" },
   hospital: { label: "医院", color: "#E53935" },
-  repair: { label: "装修", color: "#795548" },
+  housekeeping: { label: "家政", color: "#795548" },
 };
 
 export default function ContextBar({

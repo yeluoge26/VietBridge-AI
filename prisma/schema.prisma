@@ -38,7 +38,7 @@ enum SceneType {
   RESTAURANT
   RENT
   HOSPITAL
-  REPAIR
+  HOUSEKEEPING
 }
 
 // ============================================================================
@@ -53,6 +53,9 @@ model User {
   hashedPassword String?
   image          String?
   role           String    @default("user")
+  totalCalls     Int       @default(0)
+  userLevel      Int       @default(1)
+  createdAt      DateTime  @default(now())
 
   accounts      Account[]
   sessions      Session[]
@@ -63,6 +66,7 @@ model User {
   apiKeys       ApiKey[]
 
   @@index([email])
+  @@index([userLevel])
 }
 
 model Account {
@@ -222,6 +226,7 @@ model KnowledgeEntry {
 
 model RiskRule {
   id             String  @id @default(cuid())
+  name           String  @default("")
   rule           String  @db.Text
   category       String
   weight         Int
@@ -236,20 +241,70 @@ model RiskRule {
 }
 
 // ============================================================================
+// Course Management (越南语学习课程)
+// ============================================================================
+
+model Course {
+  id              String    @id @default(cuid())
+  category        String    @default("general")
+  chinese         String
+  vietnamese      String
+  pronunciation   String    @default("")
+  culturalNote    String    @db.Text @default("")
+  exampleSentence String    @default("")
+  difficulty      String    @default("beginner") // beginner | intermediate | advanced
+  isDaily         Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([category])
+  @@index([difficulty])
+  @@index([isDaily])
+}
+
+// ============================================================================
+// Scene Phrase Management (场景学习短语)
+// ============================================================================
+
+model ScenePhrase {
+  id        String   @id @default(cuid())
+  scene     String   @default("general")
+  vi        String
+  zh        String
+  pinyin    String   @default("")
+  culture   String   @db.Text @default("")
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scene])
+  @@index([active])
+}
+
+// ============================================================================
 // Prompt Management
 // ============================================================================
 
 model PromptVersion {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
+  task              TaskType  @default(TRANSLATION)
+  scene             SceneType @default(GENERAL)
   version           String
-  changes           String   @db.Text
-  status            String   @default("archived")
+  systemPrompt      String    @db.Text
+  taskPrompt        String    @db.Text
+  scenePrompt       String    @db.Text
+  changes           String    @db.Text
+  status            String    @default("archived")
   abGroup           String?
   accuracyScore     Float?
   satisfactionScore Float?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  @@index([version])
+  @@unique([task, scene, version])
+  @@index([task])
+  @@index([scene])
   @@index([status])
 }
 
@@ -266,9 +321,11 @@ model ModelRoute {
   maxCost       Float
   maxLatency    Int       // milliseconds
   active        Boolean   @default(true)
+  userLevel     Int       @default(0)  // 0=all levels, 1-6=specific level
 
   @@index([taskType, sceneType])
   @@index([active])
+  @@index([userLevel])
 }
 
 // ============================================================================
@@ -334,4 +391,44 @@ model AdminRole {
   name        String   @unique
   permissions String[]
   userIds     String[]
+}
+
+// ============================================================================
+// Model Pricing (财务管理)
+// ============================================================================
+
+model ModelPrice {
+  id          String   @id @default(cuid())
+  modelName   String   @unique
+  displayName String   @default("")
+  provider    String   @default("")
+  inputPrice  Float    @default(0)   // USD per 1K input tokens
+  outputPrice Float    @default(0)   // USD per 1K output tokens
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================================================
+// TTS Configuration (多模型 TTS 路由)
+// ============================================================================
+
+model TtsModel {
+  id          String   @id @default(cuid())
+  name        String   @unique            // 唯一标识: cosyvoice-v1, edge-tts, etc.
+  displayName String   @default("")       // 显示名: CosyVoice, Edge TTS
+  provider    String   @default("dashscope") // dashscope, edge, openai
+  apiModel    String   @default("cosyvoice-v1") // API 模型名
+  apiEndpoint String   @default("")       // 自定义端点 (空=使用默认)
+  apiKeyEnv   String   @default("DASHSCOPE_API_KEY") // 环境变量名
+  voiceZh     String   @default("longxiaochun")
+  voiceVi     String   @default("longxiaochun")
+  speed       Float    @default(1.0)
+  isDefault   Boolean  @default(false)    // 是否为默认 TTS
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@index([isDefault])
 }

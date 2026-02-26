@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { getClientGuestId } from "@/hooks/useGuestId";
 import type { TaskId } from "@/lib/intelligence/tasks";
 import type { SceneId } from "@/lib/intelligence/scene-rules";
+
+function guestHeaders(): Record<string, string> {
+  const guestId = getClientGuestId();
+  return guestId ? { "X-Guest-Id": guestId } : {};
+}
 
 export interface ChatMessage {
   type: "user" | "translation" | "reply" | "risk" | "teaching";
@@ -62,7 +68,7 @@ export function useChat(options: UseChatOptions) {
 
           const res = await fetch("/api/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...guestHeaders() },
             body: JSON.stringify({
               input,
               task: options.task,
@@ -152,7 +158,7 @@ export function useChat(options: UseChatOptions) {
           // ── Non-streaming mode ────────────────────────────────────────────
           const res = await fetch("/api/chat", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...guestHeaders() },
             body: JSON.stringify({
               input,
               task: options.task,

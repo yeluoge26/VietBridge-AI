@@ -19,7 +19,7 @@ const PLANS = [
     label: "免费版",
     price: "¥0",
     period: "",
-    limit: "50次/天",
+    limit: "10次/天",
     color: "#8B8B99",
     features: [
       "基础翻译",
@@ -29,6 +29,7 @@ const PLANS = [
     ],
     cta: "免费开始",
     ctaVariant: "outline" as const,
+    href: "/app",
   },
   {
     id: "PRO",
@@ -44,28 +45,11 @@ const PLANS = [
       "文档扫描分析",
       "AI回复建议",
       "优先响应速度",
-      "全部8种场景",
+      "全部场景学习",
     ],
     cta: "立即升级",
     ctaVariant: "default" as const,
-  },
-  {
-    id: "ENTERPRISE",
-    label: "企业版",
-    price: "¥299",
-    period: "/月",
-    limit: "无限次",
-    color: "#A855F7",
-    features: [
-      "全部Pro功能",
-      "API接入",
-      "专属客服支持",
-      "自定义知识库",
-      "团队管理",
-      "数据导出",
-    ],
-    cta: "联系我们",
-    ctaVariant: "default" as const,
+    href: "/register",
   },
 ];
 
@@ -83,7 +67,7 @@ export default function PricingSection() {
           <p className="text-[#666]">所有方案均可免费开始，随时升级</p>
         </FadeIn>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 md:gap-8">
+        <div className="mx-auto grid max-w-3xl grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
           {PLANS.map((plan, i) => (
             <FadeIn key={plan.id} delay={i * 100}>
               <Card
@@ -145,7 +129,7 @@ export default function PricingSection() {
                     variant={plan.ctaVariant}
                     asChild
                   >
-                    <Link href="/register">{plan.cta}</Link>
+                    <Link href={plan.href}>{plan.cta}</Link>
                   </Button>
                 </CardFooter>
               </Card>
