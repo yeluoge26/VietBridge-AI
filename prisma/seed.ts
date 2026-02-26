@@ -271,7 +271,13 @@ async function main() {
 
   // ── 5. Initial Prompt Version ─────────────────────────────────────────────
   await prisma.promptVersion.upsert({
-    where: { id: "seed_prompt_v1" },
+    where: {
+      task_scene_version: {
+        task: "TRANSLATION",
+        scene: "GENERAL",
+        version: "v1.0",
+      },
+    },
     update: {},
     create: {
       id: "seed_prompt_v1",
