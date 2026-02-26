@@ -58,6 +58,9 @@ h5/android/app/build/
 h5/android/build/
 h5/android/local.properties
 
+# TTS audio cache
+/storage/
+
 # iOS
 ios/VietBridge.xcodeproj/xcuserdata/
 ios/VietBridge.xcodeproj/project.xcworkspace/xcuserdata/
