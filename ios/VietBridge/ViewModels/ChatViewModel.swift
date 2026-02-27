@@ -1,123 +1,108 @@
-// ============================================================================
-// VietBridge AI — Chat View Model
-// Manages messages, streaming, task/scene/tone state
-// ============================================================================
-
-import SwiftUI
+import Foundation
 
 @Observable
 @MainActor
 final class ChatViewModel {
     var messages: [ChatMessage] = []
-    var inputText = ""
-    var isStreaming = false
-    var streamingContent = ""
-    var errorMessage: String?
-
-    // Task & Scene
-    var selectedTask: String? = nil
-    var selectedScene = "general"
+    var loading = false
+    var error: String?
+    var task = "translate"
+    var scene = "general"
+    var tone = 50
     var langDir = "zh2vi"
-    var tone: Double = 50
-
-    // Conversation
     var conversationId: String?
+    var detectedIntent: IntentInfo?
 
-    private let chatService = ChatService()
+    func send(_ text: String) {
+        guard !text.isEmpty, !loading else { return }
+        messages.append(ChatMessage(type: .user, text: text))
+        loading = true
+        error = nil
 
-    var history: [HistoryMessage] {
-        messages.suffix(10).map { msg in
-            HistoryMessage(role: msg.role.rawValue, content: msg.content)
-        }
-    }
+        let streamMsg = ChatMessage(type: .streaming, text: "")
+        messages.append(streamMsg)
+        let streamIndex = messages.count - 1
 
-    func send() async {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isStreaming else { return }
-
-        let userMsg = ChatMessage.user(text)
-        messages.append(userMsg)
-        inputText = ""
-        isStreaming = true
-        streamingContent = ""
-        errorMessage = nil
-
-        do {
-            let bytes = try await chatService.sendStreaming(
-                input: text,
-                task: selectedTask,
-                scene: selectedScene,
-                langDir: langDir,
-                tone: Int(tone),
-                conversationId: conversationId,
-                history: history
+        // Build conversation history from existing messages
+        let history = messages.dropLast(2).map { m -> ConversationEntry in
+            ConversationEntry(
+                role: m.type == .user ? "user" : "assistant",
+                content: m.text
             )
+        }
 
-            var fullContent = ""
-            var finalEvent: SSEDoneEvent?
+        Task {
+            do {
+                var req = ChatRequest(
+                    input: text, task: task, scene: scene, tone: tone,
+                    stream: true, langDir: langDir
+                )
+                if let cid = conversationId {
+                    req.conversationId = cid
+                }
+                if !history.isEmpty {
+                    req.conversationHistory = Array(history)
+                }
 
-            try await SSEClient.parse(bytes: bytes) { event in
-                switch event {
-                case .delta(let content):
-                    fullContent += content
-                    Task { @MainActor in
-                        self.streamingContent = fullContent
-                    }
-                case .done(let done):
-                    finalEvent = done
-                case .error(let msg):
-                    Task { @MainActor in
-                        self.errorMessage = msg
+                let bytes = try await APIClient.shared.streamSSE("/api/chat", body: req)
+                var accumulated = ""
+                var finalData: ChatResponseData?
+                var finalType: String?
+                var warnings: [ProactiveWarning]?
+                var kbHits: [KBHit]?
+
+                for try await line in bytes.lines {
+                    guard line.hasPrefix("data: ") else { continue }
+                    let json = String(line.dropFirst(6))
+                    guard let data = json.data(using: .utf8) else { continue }
+                    let decoder = JSONDecoder()
+                    guard let event = try? decoder.decode(SSEEvent.self, from: data) else { continue }
+
+                    switch event.type {
+                    case "delta":
+                        accumulated += event.content ?? ""
+                        messages[streamIndex].text = accumulated
+                    case "done":
+                        finalData = event.data
+                        finalType = event.messageType
+                        conversationId = event.conversationId ?? conversationId
+                        warnings = event.proactiveWarnings
+                        kbHits = event.kbHits
+                        if let intent = event.intent,
+                           let intentTask = intent.task,
+                           let confidence = intent.confidence,
+                           confidence >= 0.6,
+                           intentTask != self.task {
+                            self.detectedIntent = intent
+                        } else {
+                            self.detectedIntent = nil
+                        }
+                    case "error":
+                        error = event.error ?? "请求失败"
+                    default: break
                     }
                 }
-            }
 
-            // Create final message
-            if let done = finalEvent {
-                conversationId = done.conversationId
-                let assistantMsg = ChatMessage.assistant(
-                    content: fullContent,
-                    type: done.messageType,
-                    data: done.data,
-                    warnings: done.proactiveWarnings
+                messages[streamIndex] = ChatMessage(
+                    type: .assistant,
+                    text: accumulated,
+                    responseType: finalType,
+                    data: finalData,
+                    proactiveWarnings: warnings,
+                    kbHits: kbHits
                 )
-                messages.append(assistantMsg)
-            } else if !fullContent.isEmpty {
-                let assistantMsg = ChatMessage.assistant(
-                    content: fullContent,
-                    type: nil,
-                    data: nil,
-                    warnings: nil
-                )
-                messages.append(assistantMsg)
+            } catch {
+                self.error = error.localizedDescription
+                if streamIndex < messages.count {
+                    messages.remove(at: streamIndex)
+                }
             }
-        } catch {
-            errorMessage = error.localizedDescription
+            loading = false
         }
-
-        streamingContent = ""
-        isStreaming = false
     }
 
-    func newConversation() {
+    func clearMessages() {
         messages.removeAll()
         conversationId = nil
-        streamingContent = ""
-        errorMessage = nil
-    }
-
-    func loadConversation(_ detail: ConversationDetail) {
-        conversationId = detail.id
-        messages = detail.messages.map { msg in
-            ChatMessage(
-                id: msg.id,
-                role: msg.role == "user" ? .user : .assistant,
-                content: msg.content,
-                responseType: nil,
-                data: nil,
-                proactiveWarnings: nil,
-                timestamp: Date()
-            )
-        }
     }
 }

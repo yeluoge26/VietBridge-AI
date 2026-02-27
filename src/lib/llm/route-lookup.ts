@@ -27,10 +27,23 @@ export async function lookupModelRoute(
     return cached.data;
   }
 
+  // Only query DB for scene types that exist in the ModelRoute enum
+  const validSceneTypes = new Set([
+    "GENERAL", "BUSINESS", "STAFF", "COUPLE",
+    "RESTAURANT", "RENT", "HOSPITAL", "HOUSEKEEPING",
+  ]);
+  const upperScene = sceneType.toUpperCase();
+
+  // For scenes not in DB enum, return null (use defaults)
+  if (!validSceneTypes.has(upperScene)) {
+    cache.set(key, { data: null, timestamp: now });
+    return null;
+  }
+
   const route = await prisma.modelRoute.findFirst({
     where: {
       taskType: taskType.toUpperCase() as "TRANSLATION" | "REPLY" | "RISK" | "LEARN" | "SCAN",
-      sceneType: sceneType.toUpperCase() as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "HOUSEKEEPING",
+      sceneType: upperScene as "GENERAL" | "BUSINESS" | "STAFF" | "COUPLE" | "RESTAURANT" | "RENT" | "HOSPITAL" | "HOUSEKEEPING",
       active: true,
     },
     select: {

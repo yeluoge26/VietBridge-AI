@@ -1,74 +1,78 @@
-// ============================================================================
-// VietBridge AI — Reply Card
-// Shows suggested replies with tone and translation
-// ============================================================================
-
 import SwiftUI
 
 struct ReplyCard: View {
-    let data: ReplyData
+    let data: ChatResponseData
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("回复建议", systemImage: "text.bubble")
-                .font(.caption.bold())
-                .foregroundStyle(.replyAccent)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.teal)
+                Text("回复建议")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.teal)
+            }
+
+            if let emotion = data.emotion {
+                HStack(spacing: 4) {
+                    Text("情绪分析:")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.textTertiary)
+                    Text(emotion)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.textPrimary)
+                }
+            }
+
+            if let explanation = data.explanation {
+                Text(explanation)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.textSecondary)
+                    .padding(8)
+                    .background(Color.bgInput)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
 
             if let replies = data.replies {
                 ForEach(replies) { reply in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(reply.text)
-                            .font(.body.bold())
-                            .foregroundStyle(.textPrimary)
-
-                        if let pinyin = reply.pinyin {
-                            Text(pinyin)
-                                .font(.caption)
-                                .foregroundStyle(.textSecondary)
+                        HStack {
+                            Text(reply.style)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(styleColor(reply.level))
+                                .clipShape(Capsule())
+                            Spacer()
                         }
-
-                        if let translation = reply.translation {
-                            Text(translation)
-                                .font(.caption)
+                        Text(reply.text)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.textPrimary)
+                        if let zh = reply.zh {
+                            Text(zh)
+                                .font(.system(size: 12))
                                 .foregroundStyle(.textTertiary)
                         }
-
-                        HStack(spacing: 12) {
-                            if let tone = reply.tone {
-                                Text(tone)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.replyAccent.opacity(0.1))
-                                    .foregroundStyle(.replyAccent)
-                                    .clipShape(Capsule())
-                            }
-                            Spacer()
-                            ActionButton(icon: "speaker.wave.2", label: "") {
-                                TTSService.shared.speakVietnamese(reply.text)
-                            }
-                            ActionButton(icon: "doc.on.doc", label: "") {
-                                UIPasteboard.general.string = reply.text
-                            }
-                        }
+                        ActionButtons(text: reply.text)
                     }
                     .padding(10)
-                    .background(Color.bgInput)
+                    .background(Color.bgInput.opacity(0.5))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-            }
-
-            if let note = data.culturalNote, !note.isEmpty {
-                Text(note)
-                    .font(.caption)
-                    .foregroundStyle(.textSecondary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.replyAccent.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .padding(16)
         .cardStyle()
+    }
+
+    private func styleColor(_ level: Int?) -> Color {
+        switch level {
+        case 1: .vbAccent
+        case 2: .vbBlue
+        case 3: .riskOrange
+        default: .textSecondary
+        }
     }
 }

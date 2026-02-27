@@ -1,51 +1,40 @@
-// ============================================================================
-// VietBridge AI — Translation Card
-// Displays translation result with pinyin, context, alternatives
-// ============================================================================
-
 import SwiftUI
 
 struct TranslationCard: View {
-    let data: TranslationData
+    let data: ChatResponseData
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            Label("翻译", systemImage: "textformat.abc")
-                .font(.caption.bold())
-                .foregroundStyle(.translationAccent)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Image(systemName: "globe")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.indigo)
+                Text("翻译")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.indigo)
+            }
 
-            // Main translation
-            if let translation = data.translation {
-                Text(translation)
-                    .font(.title3.bold())
+            if let t = data.translation {
+                Text(t)
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.textPrimary)
+                ActionButtons(text: t)
+            }
 
-                // Action buttons
-                HStack(spacing: 16) {
-                    ActionButton(icon: "speaker.wave.2", label: "播放") {
-                        TTSService.shared.speakChinese(translation)
-                    }
-                    ActionButton(icon: "doc.on.doc", label: "复制") {
-                        UIPasteboard.general.string = translation
-                    }
-                    ActionButton(icon: "square.and.arrow.up", label: "分享") {
-                        shareText(translation)
-                    }
+            if let natural = data.natural {
+                HStack(spacing: 4) {
+                    Text("自然变体:")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.textTertiary)
+                    Text(natural)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.textSecondary)
                 }
             }
 
-            // Pinyin
-            if let pinyin = data.pinyin {
-                Text(pinyin)
-                    .font(.subheadline)
-                    .foregroundStyle(.textSecondary)
-            }
-
-            // Context
-            if let context = data.context, !context.isEmpty {
-                Text(context)
-                    .font(.caption)
+            if let ctx = data.context, !ctx.isEmpty {
+                Text(ctx)
+                    .font(.system(size: 12))
                     .foregroundStyle(.textSecondary)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,30 +42,28 @@ struct TranslationCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
-            // Alternatives
-            if let alts = data.alternatives, !alts.isEmpty {
-                Divider()
-                Text("其他译法")
-                    .font(.caption.bold())
-                    .foregroundStyle(.textSecondary)
-                ForEach(alts, id: \.text) { alt in
-                    HStack {
-                        Text(alt.text)
-                            .font(.subheadline)
-                        if let tone = alt.tone {
-                            Text(tone)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.bgInput)
-                                .clipShape(Capsule())
-                        }
-                        Spacer()
-                    }
-                }
+            if let tone = data.tone {
+                infoRow("🎭", "语气分析", tone)
+            }
+            if let gn = data.grammarNote {
+                infoRow("📝", "语法提示", gn.displayText)
+            }
+            if let culture = data.culture {
+                infoRow("🌏", "文化提示", culture)
             }
         }
         .padding(16)
         .cardStyle()
+    }
+
+    private func infoRow(_ emoji: String, _ label: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(emoji) \(label)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.textTertiary)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(.textSecondary)
+        }
     }
 }

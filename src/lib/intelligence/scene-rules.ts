@@ -26,7 +26,14 @@ export type SceneId =
   | "restaurant"
   | "rent"
   | "hospital"
-  | "housekeeping";
+  | "housekeeping"
+  | "ktv"
+  | "dirtyword"
+  | "transport"
+  | "mlove"
+  | "customer"
+  | "pickup"
+  | "antiscam";
 
 export const SCENES: Scene[] = [
   { id: "general", label: "通用", emoji: "🌍" },
@@ -37,6 +44,13 @@ export const SCENES: Scene[] = [
   { id: "rent", label: "租房", emoji: "🏠" },
   { id: "hospital", label: "看病就医", emoji: "🏥" },
   { id: "housekeeping", label: "家政服务", emoji: "🧹" },
+  { id: "ktv", label: "KTV夜生活", emoji: "🎤" },
+  { id: "dirtyword", label: "吵架骂人", emoji: "🤬" },
+  { id: "transport", label: "交通摩托", emoji: "🏍️" },
+  { id: "mlove", label: "情侣亲密", emoji: "🔥" },
+  { id: "customer", label: "消费购物", emoji: "🛒" },
+  { id: "pickup", label: "认识陌生人", emoji: "👋" },
+  { id: "antiscam", label: "防被宰", emoji: "🛡️" },
 ];
 
 export const SCENE_COLORS: Record<SceneId, string> = {
@@ -48,6 +62,13 @@ export const SCENE_COLORS: Record<SceneId, string> = {
   rent: "#4527A0",
   hospital: "#00838F",
   housekeeping: "#795548",
+  ktv: "#9C27B0",
+  dirtyword: "#D32F2F",
+  transport: "#FF6F00",
+  mlove: "#E91E63",
+  customer: "#00897B",
+  pickup: "#5C6BC0",
+  antiscam: "#F44336",
 };
 
 export const SCENE_RULES: Record<SceneId, SceneRule> = {
@@ -122,5 +143,68 @@ export const SCENE_RULES: Record<SceneId, SceneRule> = {
     formality: "casual",
     promptRule:
       "使用家政服务相关越南语。称呼家政人员通常用chị/em。工作安排要清晰（如lau nhà拖地, giặt đồ洗衣, nấu ăn做饭, dọn dẹp打扫）。讨论薪资用lương/tiền công。了解岘港家政市场行情。时间安排用giờ/buổi。注意越南家政文化中的礼貌用语。沟通清洁标准和注意事项时要具体明确。",
+  },
+  ktv: {
+    pronounSelf: "tôi/mình",
+    pronounOther: "bạn/em",
+    toneDesc: "轻松随意，夜生活娱乐场景",
+    particles: ["ơi", "đi", "nha", "nhé"],
+    formality: "casual",
+    promptRule:
+      "KTV/夜生活场景。语气轻松随意。常用点歌(chọn bài)、倒酒(rót rượu)、干杯(cạn ly/dzô)等表达。了解岘港KTV文化和常见消费陷阱。注意价格确认和账单核对。越南KTV常见的隐性消费（如开瓶费、小费、最低消费）要提醒用户注意。",
+  },
+  dirtyword: {
+    pronounSelf: "tao/tôi",
+    pronounOther: "mày/bạn",
+    toneDesc: "粗鲁直接，吵架冲突场景",
+    particles: ["đấy", "đi", "à"],
+    formality: "vulgar",
+    promptRule:
+      "吵架/冲突场景翻译。用户可能需要理解对方骂人的话或表达不满。翻译要准确但同时标注语气等级和文化影响。tao/mày是粗鲁人称，相当于'老子/你丫'。提醒用户越南文化中骂人的后果和风险。建议用户优先使用礼貌但坚定的表达来解决冲突。",
+  },
+  transport: {
+    pronounSelf: "tôi",
+    pronounOther: "anh (司机)/bạn",
+    toneDesc: "日常实用，交通出行场景",
+    particles: ["ơi", "cho", "được không"],
+    formality: "casual",
+    promptRule:
+      "交通出行场景。涉及打车(xe ôm/Grab)、租摩托(thuê xe máy)、问路(hỏi đường)等。了解岘港交通规则和常见路线。摩托车租赁注意事项（如驾照、保险、押金）。Grab打车用语。公交信息。注意交通安全提醒和常见骗局（如绕路、乱收费）。",
+  },
+  mlove: {
+    pronounSelf: "anh/em",
+    pronounOther: "em/anh",
+    toneDesc: "亲密暧昧，浪漫约会场景",
+    particles: ["yêu", "nhé", "à", "ơi", "quá"],
+    formality: "intimate",
+    promptRule:
+      "亲密/约会场景。比couple更加暧昧亲密。越南语中的调情表达、甜言蜜语、约会邀请等。了解越南约会文化。常用浪漫表达（如anh nhớ em想你, em đẹp quá你真美）。注意文化差异中的禁忌话题。岘港约会热门地点推荐可适当融入。",
+  },
+  customer: {
+    pronounSelf: "tôi/mình",
+    pronounOther: "chị/anh (店员)",
+    toneDesc: "消费场景，讨价还价",
+    particles: ["ơi", "bớt", "cho", "được không"],
+    formality: "casual",
+    promptRule:
+      "消费购物场景。涉及砍价(trả giá/bớt)、询价(bao nhiêu tiền)、退换货等。了解岘港各大市场（如韩市场Chợ Hàn、大市场Chợ Cồn）的行情。越南砍价文化和技巧。常见商品越南语名称。注意识别旅游区价格虚高的情况。提醒用户合理价格范围。",
+  },
+  pickup: {
+    pronounSelf: "mình/tôi",
+    pronounOther: "bạn",
+    toneDesc: "友好开朗，社交破冰",
+    particles: ["nhé", "nha", "không", "đi"],
+    formality: "casual",
+    promptRule:
+      "社交破冰/认识新朋友场景。自我介绍(giới thiệu)、搭话(bắt chuyện)、交换联系方式等。越南社交文化中的礼貌开场方式。常用破冰话题（如来自哪里、在岘港做什么）。注意越南人对陌生人的态度和文化习惯。建议自然友好的表达方式。",
+  },
+  antiscam: {
+    pronounSelf: "tôi",
+    pronounOther: "anh/chị/bạn",
+    toneDesc: "警惕坚定，防骗场景",
+    particles: ["ạ", "không", "được không"],
+    formality: "neutral",
+    promptRule:
+      "防骗/防被宰场景。重点是帮助用户识别和应对常见骗局。涉及拒绝高价(mắc quá)、要求看账单(cho tôi xem hóa đơn)、投诉(khiếu nại)等表达。了解岘港常见针对游客/华人的骗局。提供坚定但不失礼貌的拒绝话术。提醒用户如何保护自己的权益。紧急情况下的求助表达（如报警gọi công an）。",
   },
 };

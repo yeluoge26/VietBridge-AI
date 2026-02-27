@@ -5,6 +5,7 @@ import { SCENES } from "@/data/scenes";
 import { speak } from "@/utils/tts";
 import { fetchScenePhrases } from "@/api/scene-phrases";
 import type { ScenePhrase } from "@/api/scene-phrases";
+import { fetchCourses as apiFetchCourses } from "@/api/courses";
 import type { Course } from "@/api/courses";
 
 type LearnTab = "daily" | "courses" | "scenes" | "phrases";
@@ -64,12 +65,11 @@ export default function LearnPage() {
   const fetchCourses = useCallback(async () => {
     setCourseLoading(true);
     setCoursePage(1);
-    const params = new URLSearchParams();
-    if (courseCategory) params.set("category", courseCategory);
-    if (courseDifficulty) params.set("difficulty", courseDifficulty);
     try {
-      const res = await fetch(`/api/courses?${params}`);
-      const data = await res.json();
+      const params: { category?: string; difficulty?: string } = {};
+      if (courseCategory) params.category = courseCategory;
+      if (courseDifficulty) params.difficulty = courseDifficulty;
+      const data = await apiFetchCourses(params);
       setCourses(Array.isArray(data) ? data : []);
     } catch { /* ignore */ }
     setCourseLoading(false);

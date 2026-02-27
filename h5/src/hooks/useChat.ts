@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { apiStream, apiPost, buildHeaders } from "@/api/client";
+import { buildHeaders } from "@/api/client";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 import type { TaskId } from "@/data/tasks";
 import type { SceneId } from "@/data/scenes";
 
@@ -52,7 +54,7 @@ export function useChat(options: UseChatOptions) {
         const controller = new AbortController();
         abortRef.current = controller;
 
-        const res = await fetch("/api/chat", {
+        const res = await fetch(API_BASE + "/api/chat", {
           method: "POST",
           headers: buildHeaders(),
           body: JSON.stringify({
@@ -61,8 +63,11 @@ export function useChat(options: UseChatOptions) {
             scene: options.scene,
             tone: options.tone,
             langDir: options.langDir,
-            conversationHistory: messagesRef.current,
-            conversationId,
+            conversationHistory: messagesRef.current.map((m) => ({
+              role: m.type === "user" ? "user" : "assistant",
+              content: m.text || m.streamText || JSON.stringify(m.data) || "",
+            })),
+            ...(conversationId ? { conversationId } : {}),
             stream: true,
           }),
           signal: controller.signal,

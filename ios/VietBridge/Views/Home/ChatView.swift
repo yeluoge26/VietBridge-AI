@@ -1,109 +1,137 @@
-// ============================================================================
-// VietBridge AI — Chat View
-// Message list with streaming indicator
-// ============================================================================
-
 import SwiftUI
 
 struct ChatView: View {
-    let viewModel: ChatViewModel
+    let messages: [ChatMessage]
+    let loading: Bool
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    if viewModel.messages.isEmpty {
+                    if messages.isEmpty {
                         emptyState
-                    } else {
-                        ForEach(viewModel.messages) { msg in
-                            MessageBubble(message: msg)
-                                .id(msg.id)
-                        }
+                    }
 
-                        // Streaming indicator
-                        if viewModel.isStreaming {
-                            streamingBubble
-                                .id("streaming")
+                    ForEach(messages) { msg in
+                        switch msg.type {
+                        case .user:
+                            userBubble(msg.text)
+                        case .streaming:
+                            streamingBubble(msg.text)
+                        case .assistant:
+                            assistantContent(msg)
                         }
                     }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: viewModel.messages.count) {
-                if let lastId = viewModel.messages.last?.id {
-                    withAnimation {
-                        proxy.scrollTo(lastId, anchor: .bottom)
+
+                    if loading && messages.last?.type != .streaming {
+                        LoadingDots()
+                            .padding(.vertical, 8)
                     }
                 }
+                .padding(16)
+                .id("bottom")
             }
-            .onChange(of: viewModel.streamingContent) {
-                withAnimation {
-                    proxy.scrollTo("streaming", anchor: .bottom)
-                }
+            .onChange(of: messages.count) { _, _ in
+                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 12) {
             Spacer().frame(height: 60)
-            Image(systemName: "globe.asia.australia.fill")
+            Text("🇻🇳")
                 .font(.system(size: 48))
-                .foregroundStyle(.textTertiary)
-            Text("你好！我是 VietBridge AI")
-                .font(.title3.bold())
+            Text("越南生活AI助手")
+                .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.textPrimary)
-            Text("输入中文或越南语，我来帮你翻译、回复建议、风险评估或教你越南语")
-                .font(.subheadline)
+            Text("翻译 · 回复建议 · 风险分析 · 学越语")
+                .font(.system(size: 13))
                 .foregroundStyle(.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func userBubble(_ text: String) -> some View {
+        HStack {
+            Spacer()
+            Text(text)
+                .font(.system(size: 14))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
 
-    private var streamingBubble: some View {
+    private func streamingBubble(_ text: String) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(viewModel.streamingContent.isEmpty ? "思考中..." : viewModel.streamingContent)
-                    .font(.body)
+                Text(text)
+                    .font(.system(size: 14))
                     .foregroundStyle(.textPrimary)
-                if viewModel.streamingContent.isEmpty {
-                    LoadingDots()
-                }
+                LoadingDots()
             }
             .padding(12)
-            .background(Color.bgCard)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            Spacer(minLength: 40)
+            .cardStyle()
+            Spacer()
         }
     }
-}
 
-// MARK: - Message Bubble
-
-struct MessageBubble: View {
-    let message: ChatMessage
-
-    var body: some View {
+    @ViewBuilder
+    private func assistantContent(_ msg: ChatMessage) -> some View {
         HStack {
-            if message.role == .user { Spacer(minLength: 60) }
+            VStack(alignment: .leading, spacing: 8) {
+                if let type = msg.responseType, let data = msg.data {
+                    switch type {
+                    case "translation": TranslationCard(data: data)
+                    case "reply": ReplyCard(data: data)
+                    case "risk": RiskCard(data: data)
+                    case "teaching", "teach": TeachCard(data: data)
+                    default: textCard(msg.text)
+                    }
+                } else {
+                    textCard(msg.text)
+                }
 
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-                Text(message.content)
-                    .font(.body)
-                    .foregroundStyle(message.role == .user ? .white : .textPrimary)
-                    .padding(12)
-                    .background(
-                        message.role == .user
-                        ? Color.textPrimary
-                        : Color.bgCard
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                // Proactive warnings
+                if let warnings = msg.proactiveWarnings, !warnings.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(warnings.enumerated()), id: \.offset) { _, w in
+                            HStack(spacing: 4) {
+                                Text(warningIcon(w.type))
+                                    .font(.system(size: 11))
+                                Text(w.text)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(hex: "#FFF8E1"))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
+            Spacer()
+        }
+    }
 
-            if message.role == .assistant { Spacer(minLength: 60) }
+    private func textCard(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14))
+            .foregroundStyle(.textPrimary)
+            .padding(12)
+            .cardStyle()
+    }
+
+    private func warningIcon(_ type: String) -> String {
+        switch type {
+        case "price": "💰"
+        case "risk": "⚠️"
+        case "tone": "🎭"
+        default: "💡"
         }
     }
 }

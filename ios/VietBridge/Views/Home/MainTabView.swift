@@ -1,8 +1,3 @@
-// ============================================================================
-// VietBridge AI — Main Tab View
-// Bottom tab bar navigation (Home, Scan, Learn, Profile)
-// ============================================================================
-
 import SwiftUI
 
 struct MainTabView: View {
@@ -10,22 +5,30 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: 0) {
-                HomeTab()
+            HomeTab().tag(0).tabItem {
+                Image(systemName: "message.fill")
+                Text("对话")
             }
-
-            Tab("扫描", systemImage: "doc.text.viewfinder", value: 1) {
-                ScanTab()
+            ScanTab().tag(1).tabItem {
+                Image(systemName: "camera.fill")
+                Text("扫描")
             }
-
-            Tab("学习", systemImage: "book.fill", value: 2) {
-                LearnTab()
+            LearnTab().tag(2).tabItem {
+                Image(systemName: "book.fill")
+                Text("学习")
             }
-
-            Tab("我的", systemImage: "person.fill", value: 3) {
-                ProfileTab()
+            GuideTab().tag(3).tabItem {
+                Image(systemName: "map.fill")
+                Text("指南")
+            }
+            ProfileTab().tag(4).tabItem {
+                Image(systemName: "person.fill")
+                Text("我的")
             }
         }
         .tint(.textPrimary)
+        .onChange(of: selectedTab) { _, _ in
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
 }

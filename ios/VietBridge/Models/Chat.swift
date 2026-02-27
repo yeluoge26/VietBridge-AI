@@ -1,218 +1,163 @@
-// ============================================================================
-// VietBridge AI — Chat Models
-// Codable structs matching backend JSON responses
-// ============================================================================
-
 import Foundation
 
-// MARK: - Chat Request
+// MARK: - Request
 
-struct ChatRequest: Codable, Sendable {
+struct ChatRequest: Encodable {
     let input: String
-    let task: String?
-    let scene: String?
-    let langDir: String
+    let task: String
+    let scene: String
     let tone: Int
     let stream: Bool
-    let conversationId: String?
-    let conversationHistory: [HistoryMessage]
+    let langDir: String
+    var conversationId: String?
+    var conversationHistory: [ConversationEntry]?
 }
 
-struct HistoryMessage: Codable, Sendable {
-    let role: String
+struct ConversationEntry: Encodable {
+    let role: String   // "user" | "assistant"
     let content: String
 }
 
 // MARK: - SSE Events
 
-struct SSEDeltaEvent: Codable, Sendable {
-    let type: String
-    let content: String?
-}
-
-struct SSEDoneEvent: Codable, Sendable {
-    let type: String
-    let messageType: String?
+struct SSEEvent: Decodable {
+    let type: String            // "delta" | "done" | "error"
+    let content: String?        // delta text chunk
+    let messageType: String?    // "translation" | "reply" | "risk" | "teaching"
     let data: ChatResponseData?
-    let proactiveWarnings: [ProactiveWarning]?
-    let conversationId: String?
     let intent: IntentInfo?
-    let usage: UsageInfo?
+    let conversationId: String?
+    let error: String?
+    let proactiveWarnings: [ProactiveWarning]?
+    let kbHits: [KBHit]?
+    let hasContext: Bool?
 }
 
-struct IntentInfo: Codable, Sendable {
-    let task: String
-    let scene: String
+struct IntentInfo: Codable {
+    let task: String?
+    let scene: String?
+    let confidence: Double?
+}
+
+struct ProactiveWarning: Codable, Identifiable {
+    var id: String { "\(type)-\(text.prefix(20))" }
+    let type: String
+    let text: String
+}
+
+// MARK: - KB Hits
+
+struct KBHit: Codable, Identifiable {
+    var id: String { source + String(confidence) }
+    let source: String
+    let detail: String
     let confidence: Double
 }
 
-struct UsageInfo: Codable, Sendable {
-    let model: String
-    let tokensPrompt: Int
-    let tokensCompletion: Int
-    let cost: String
-    let latency: Int
-}
+// MARK: - Main Response Data (union of all task types)
 
-// MARK: - Chat Response Data
-
-enum ChatResponseData: Codable, Sendable {
-    case translation(TranslationData)
-    case reply(ReplyData)
-    case risk(RiskData)
-    case teach(TeachData)
-    case unknown
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let t = try? container.decode(TranslationData.self), t.translation != nil {
-            self = .translation(t)
-        } else if let r = try? container.decode(ReplyData.self), r.replies != nil {
-            self = .reply(r)
-        } else if let rk = try? container.decode(RiskData.self), rk.score != nil {
-            self = .risk(rk)
-        } else if let tc = try? container.decode(TeachData.self), tc.phrase != nil {
-            self = .teach(tc)
-        } else {
-            self = .unknown
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .translation(let d): try container.encode(d)
-        case .reply(let d): try container.encode(d)
-        case .risk(let d): try container.encode(d)
-        case .teach(let d): try container.encode(d)
-        case .unknown: try container.encodeNil()
-        }
-    }
-}
-
-// MARK: - Translation
-
-struct TranslationData: Codable, Sendable {
+struct ChatResponseData: Codable {
+    // Translation fields
+    let original: String?
     let translation: String?
-    let pinyin: String?
-    let literal: String?
+    let natural: String?
+    let tone: String?
+    let scene: String?
     let context: String?
-    let alternatives: [AlternativeTranslation]?
+    let culture: String?
+    let grammarNote: GrammarNote?
+
+    // Reply fields
+    let explanation: String?
+    let emotion: String?
+    let replies: [ReplyOption]?
+
+    // Risk fields
+    let score: Int?
+    let situation: String?
+    let factors: [RiskFactor]?
+    let tips: [String]?
+    let scripts: [RiskScript]?
+    let knowledgeHits: [KBHit]?
+
+    // Learn/Teaching fields
+    let phrase: TeachPhrase?
+    let examples: [TeachExample]?
 }
 
-struct AlternativeTranslation: Codable, Sendable {
-    let text: String
-    let tone: String?
-    let note: String?
+// MARK: - Grammar Note (translation)
+
+struct GrammarNote: Codable {
+    let `self`: String?
+    let other: String?
+    let particles: [String]?
+    let formality: String?
+
+    enum CodingKeys: String, CodingKey {
+        case `self`, other, particles, formality
+    }
+
+    var displayText: String {
+        var parts: [String] = []
+        if let s = self.`self` { parts.append("自称: \(s)") }
+        if let o = other { parts.append("对方: \(o)") }
+        if let p = particles, !p.isEmpty { parts.append("助词: \(p.joined(separator: ", "))") }
+        if let f = formality { parts.append("语体: \(f)") }
+        return parts.joined(separator: "；")
+    }
 }
 
 // MARK: - Reply
 
-struct ReplyData: Codable, Sendable {
-    let replies: [ReplyOption]?
-    let culturalNote: String?
-}
-
-struct ReplyOption: Codable, Sendable, Identifiable {
-    var id: String { text }
+struct ReplyOption: Codable, Identifiable {
+    var id: String { "\(level ?? 0)-\(style)" }
+    let level: Int?
+    let style: String
     let text: String
-    let tone: String?
-    let pinyin: String?
-    let translation: String?
+    let zh: String?
 }
 
 // MARK: - Risk
 
-struct RiskData: Codable, Sendable {
-    let score: Int?
-    let level: String?
-    let factors: [RiskFactor]?
-    let tips: [String]?
-    let scripts: [RiskScript]?
-}
-
-struct RiskFactor: Codable, Sendable, Identifiable {
+struct RiskFactor: Codable, Identifiable {
     var id: String { label }
     let label: String
-    let detail: String?
-    let weight: Int?
+    let weight: Int
+    let active: Bool?
 }
 
-struct RiskScript: Codable, Sendable, Identifiable {
-    var id: String { vi }
+struct RiskScript: Codable, Identifiable {
+    var id: String { String(vi.prefix(30)) + String(zh.prefix(30)) }
     let vi: String
     let zh: String
-    let situation: String?
 }
 
-// MARK: - Teach
+// MARK: - Learn/Teaching
 
-struct TeachData: Codable, Sendable {
-    let phrase: String?
+struct TeachPhrase: Codable {
+    let vi: String?
+    let zh: String?
     let pinyin: String?
-    let meaning: String?
-    let examples: [TeachExample]?
-    let culturalNote: String?
 }
 
-struct TeachExample: Codable, Sendable, Identifiable {
+struct TeachExample: Codable, Identifiable {
     var id: String { vi }
     let vi: String
     let zh: String
-    let situation: String?
 }
 
-// MARK: - Proactive Warning
+// MARK: - Message Types
 
-struct ProactiveWarning: Codable, Sendable, Identifiable {
-    var id: String { message }
-    let type: String
-    let message: String
-    let severity: String?
+enum MessageType: String {
+    case user, assistant, streaming
 }
 
-// MARK: - Chat Message (UI)
-
-struct ChatMessage: Identifiable, Sendable {
-    let id: String
-    let role: MessageRole
-    let content: String
-    let responseType: String?
-    let data: ChatResponseData?
-    let proactiveWarnings: [ProactiveWarning]?
-    let timestamp: Date
-
-    enum MessageRole: String, Sendable {
-        case user
-        case assistant
-    }
-
-    static func user(_ text: String) -> ChatMessage {
-        ChatMessage(
-            id: UUID().uuidString,
-            role: .user,
-            content: text,
-            responseType: nil,
-            data: nil,
-            proactiveWarnings: nil,
-            timestamp: Date()
-        )
-    }
-
-    static func assistant(
-        content: String,
-        type: String?,
-        data: ChatResponseData?,
-        warnings: [ProactiveWarning]?
-    ) -> ChatMessage {
-        ChatMessage(
-            id: UUID().uuidString,
-            role: .assistant,
-            content: content,
-            responseType: type,
-            data: data,
-            proactiveWarnings: warnings,
-            timestamp: Date()
-        )
-    }
+struct ChatMessage: Identifiable {
+    let id = UUID()
+    let type: MessageType
+    var text: String
+    var responseType: String?       // "translation" | "reply" | "risk" | "teaching"
+    var data: ChatResponseData?
+    var proactiveWarnings: [ProactiveWarning]?
+    var kbHits: [KBHit]?
 }

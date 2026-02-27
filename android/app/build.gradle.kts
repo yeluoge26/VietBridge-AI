@@ -16,7 +16,7 @@ android {
         versionCode = 2
         versionName = "1.1.0"
 
-        buildConfigField("String", "BASE_URL", "\"https://vietbridge.ai\"")
+        buildConfigField("String", "BASE_URL", "\"https://api.vietbrige.com\"")
     }
 
     buildTypes {

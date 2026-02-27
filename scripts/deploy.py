@@ -34,7 +34,7 @@ except ImportError:
 SERVER_IP = "149.28.154.133"
 SERVER_USER = "root"
 SERVER_PASS = "{oM7rD,85W_rhtbX"
-DOMAIN = "vietbridge.com"
+DOMAIN = "vietbrige.com"
 PROJECT_DIR = Path(__file__).resolve().parent.parent  # vietbridge-ai/
 
 DB_NAME = "vietbridge_ai"

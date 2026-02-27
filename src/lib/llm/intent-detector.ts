@@ -53,6 +53,19 @@ const SCENE_KEYWORDS: Record<SceneId, RegExp> = {
     /医院|看病|医生|药|生病|bệnh viện|bác sĩ|thuốc|ốm|đau|头疼|发烧|感冒|拉肚子|过敏|急诊|挂号|体检/i,
   housekeeping:
     /家政|保姆|钟点工|打扫|清洁|giúp việc|dọn dẹp|lau nhà|giặt đồ|nấu ăn|保洁|阿姨|做饭|洗衣|拖地/i,
+  ktv: /ktv|夜总会|夜生活|唱歌|小姐|陪酒|俱乐部|quán bar|bar|club|hát karaoke|karaoke/i,
+  dirtyword:
+    /骂人|吵架|吵嘴|争吵|冲突|脏话|侮辱|đánh nhau|cãi nhau|chửi|xung đột|mắng|骂|对骂/i,
+  transport:
+    /摩托|打车|出租车|taxi|Grab|骑车|坐车|问路|方向|怎么去|路|交通|đường|xe máy|xe ôm|xe buýt|lái xe|chỉ đường/i,
+  mlove:
+    /约会|暧昧|撩|追求|喜欢|表白|浪漫|激情|亲密|hẹn hò|thích|yêu|tán tỉnh|lãng mạn|cảm xúc|ngầu/i,
+  customer:
+    /买东西|购物|砍价|还价|多少钱|价格|便宜|贵|市场|超市|商场|mua|chợ|siêu thị|bao nhiêu|đắt|rẻ|trả giá|mặc cả/i,
+  pickup:
+    /认识|搭讪|打招呼|交友|陌生人|新朋友|làm quen|kết bạn|xin số|gặp gỡ|nói chuyện|认识一下/i,
+  antiscam:
+    /被宰|被骗|宰客|黑店|乱收费|防骗|骗子|诈骗|高价|bị lừa|lừa đảo|chặt chém|cảnh giác|tố cáo|cảnh sát/i,
 };
 
 // ---------------------------------------------------------------------------

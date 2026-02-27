@@ -1,166 +1,93 @@
-// ============================================================================
-// VietBridge AI — API Client
-// Base HTTP client with JWT token interceptor
-// ============================================================================
-
 import Foundation
-
-enum APIError: LocalizedError {
-    case unauthorized
-    case badRequest(String)
-    case serverError(String)
-    case networkError(Error)
-    case decodingError(Error)
-
-    var errorDescription: String? {
-        switch self {
-        case .unauthorized:
-            "登录已过期，请重新登录"
-        case .badRequest(let msg):
-            msg
-        case .serverError(let msg):
-            msg
-        case .networkError(let error):
-            "网络连接失败: \(error.localizedDescription)"
-        case .decodingError:
-            "数据解析失败"
-        }
-    }
-}
-
-struct APIErrorResponse: Codable {
-    let error: String
-}
 
 actor APIClient {
     static let shared = APIClient()
 
-    #if DEBUG
-    private let baseURL = "http://localhost:3000"
-    #else
-    private let baseURL = "https://vietbridge.ai"
-    #endif
+    private let baseURL = "https://api.vietbrige.com"
 
-    private let session: URLSession
-    private let decoder: JSONDecoder
+    private let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
 
-    private init() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 120
-        session = URLSession(configuration: config)
+    private func buildRequest(_ path: String, method: String = "GET", body: (any Encodable)? = nil) throws -> URLRequest {
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("VietBridge-iOS/1.0", forHTTPHeaderField: "User-Agent")
 
-        decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-    }
-
-    // MARK: - Core Request
-
-    func request<T: Decodable>(
-        _ method: String,
-        path: String,
-        body: (any Encodable)? = nil,
-        queryItems: [URLQueryItem]? = nil
-    ) async throws -> T {
-        let request = try buildRequest(method, path: path, body: body, queryItems: queryItems)
-        let (data, response) = try await performRequest(request)
-        try validateResponse(response, data: data)
-        do {
-            return try decoder.decode(T.self, from: data)
-        } catch {
-            throw APIError.decodingError(error)
-        }
-    }
-
-    func requestVoid(
-        _ method: String,
-        path: String,
-        body: (any Encodable)? = nil,
-        queryItems: [URLQueryItem]? = nil
-    ) async throws {
-        let request = try buildRequest(method, path: path, body: body, queryItems: queryItems)
-        let (data, response) = try await performRequest(request)
-        try validateResponse(response, data: data)
-    }
-
-    // MARK: - Streaming (SSE)
-
-    func streamRequest(
-        path: String,
-        body: some Encodable
-    ) async throws -> URLSession.AsyncBytes {
-        var request = try buildRequest("POST", path: path, body: body)
-        request.timeoutInterval = 120
-
-        let (bytes, response) = try await session.bytes(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.serverError("无效的服务器响应")
-        }
-
-        if httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
-        }
-
-        if httpResponse.statusCode != 200 {
-            throw APIError.serverError("服务器错误 (\(httpResponse.statusCode))")
-        }
-
-        return bytes
-    }
-
-    // MARK: - Private
-
-    private func buildRequest(
-        _ method: String,
-        path: String,
-        body: (any Encodable)? = nil,
-        queryItems: [URLQueryItem]? = nil
-    ) throws -> URLRequest {
-        var components = URLComponents(string: baseURL + path)!
-        if let queryItems { components.queryItems = queryItems }
-
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("VietBridge-iOS/1.0", forHTTPHeaderField: "User-Agent")
-
-        // Attach JWT token
-        if let token = KeychainHelper.getToken() {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let token = KeychainHelper.load(key: "authToken") {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else {
+            var guestId = UserDefaults.standard.string(forKey: "guestId")
+            if guestId == nil {
+                guestId = UUID().uuidString.lowercased()
+                UserDefaults.standard.set(guestId, forKey: "guestId")
+            }
+            req.setValue(guestId!, forHTTPHeaderField: "X-Guest-Id")
         }
 
         if let body {
-            request.httpBody = try JSONEncoder().encode(body)
+            req.httpBody = try JSONEncoder().encode(body)
         }
-
-        return request
+        return req
     }
 
-    private func performRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await session.data(for: request)
-        } catch {
-            throw APIError.networkError(error)
-        }
+    func get<T: Decodable>(_ path: String) async throws -> T {
+        let req = try buildRequest(path)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try checkResponse(response)
+        return try decoder.decode(T.self, from: data)
     }
 
-    private func validateResponse(_ response: URLResponse, data: Data) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.serverError("无效的服务器响应")
-        }
+    func post<T: Decodable>(_ path: String, body: some Encodable) async throws -> T {
+        let req = try buildRequest(path, method: "POST", body: body)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try checkResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
 
-        switch httpResponse.statusCode {
-        case 200...299:
-            return
-        case 401:
-            throw APIError.unauthorized
-        case 400...499:
-            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
-            throw APIError.badRequest(errorResponse?.error ?? "请求错误")
-        default:
-            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
-            throw APIError.serverError(errorResponse?.error ?? "服务器错误")
+    func postRaw(_ path: String, body: some Encodable) async throws -> Data {
+        let req = try buildRequest(path, method: "POST", body: body)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try checkResponse(response)
+        return data
+    }
+
+    func streamSSE(_ path: String, body: some Encodable) async throws -> URLSession.AsyncBytes {
+        let req = try buildRequest(path, method: "POST", body: body)
+        let (bytes, response) = try await URLSession.shared.bytes(for: req)
+        try checkResponse(response)
+        return bytes
+    }
+
+    func delete(_ path: String) async throws {
+        let req = try buildRequest(path, method: "DELETE")
+        let (_, response) = try await URLSession.shared.data(for: req)
+        try checkResponse(response)
+    }
+
+    private func checkResponse(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError.httpError(http.statusCode)
+        }
+    }
+}
+
+enum APIError: LocalizedError {
+    case invalidURL
+    case unauthorized
+    case httpError(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: "Invalid URL"
+        case .unauthorized: "请先登录"
+        case .httpError(let code): "请求失败 (\(code))"
         }
     }
 }

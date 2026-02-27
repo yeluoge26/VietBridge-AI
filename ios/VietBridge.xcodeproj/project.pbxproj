@@ -6,20 +6,56 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXGroup section */
-		AAA00001 /* VietBridge */ = {
-			isa = PBXGroup;
-			children = (
+/* Begin PBXFileReference section */
+		DDD00000 /* VietBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VietBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FFF00001 /* Exceptions for "VietBridge" folder in "VietBridge" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
 			);
-			name = VietBridge;
+			target = BBB00000 /* VietBridge */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		AAA00001 /* VietBridge */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FFF00001 /* Exceptions for "VietBridge" folder in "VietBridge" target */,
+			);
 			path = VietBridge;
 			sourceTree = "<group>";
 		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BBB00003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
 		AAA00000 = {
 			isa = PBXGroup;
 			children = (
 				AAA00001 /* VietBridge */,
+				AAA00002 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		AAA00002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DDD00000 /* VietBridge.app */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -27,7 +63,7 @@
 /* Begin PBXNativeTarget section */
 		BBB00000 /* VietBridge */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = CCC00002;
+			buildConfigurationList = CCC00002 /* Build configuration list for PBXNativeTarget "VietBridge" */;
 			buildPhases = (
 				BBB00001 /* Sources */,
 				BBB00002 /* Resources */,
@@ -57,7 +93,7 @@
 				LastSwiftUpdateCheck = 1620;
 				LastUpgradeCheck = 1620;
 			};
-			buildConfigurationList = CCC00000;
+			buildConfigurationList = CCC00000 /* Build configuration list for PBXProject "VietBridge" */;
 			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -67,7 +103,7 @@
 			);
 			mainGroup = AAA00000;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = AAA00000;
+			productRefGroup = AAA00002 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -75,16 +111,6 @@
 			);
 		};
 /* End PBXProject section */
-
-/* Begin PBXSourcesBuildPhase section */
-		BBB00001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		BBB00002 /* Resources */ = {
@@ -96,25 +122,15 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXFrameworksBuildPhase section */
-		BBB00003 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
+/* Begin PBXSourcesBuildPhase section */
+		BBB00001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXFileReference section */
-		DDD00000 /* VietBridge.app */ = {
-			isa = PBXFileReference;
-			explicitFileType = wrapper.application;
-			includeInIndex = 0;
-			path = VietBridge.app;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-/* End PBXFileReference section */
+/* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		CCC00001 /* Debug */ = {
@@ -136,13 +152,13 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -160,11 +176,11 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_OPTIMIZATION_LEVEL = s;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 5.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -176,7 +192,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 743C9MM4LU;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VietBridge/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "VietBridge AI";
@@ -195,7 +211,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -207,7 +223,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 743C9MM4LU;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VietBridge/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "VietBridge AI";
@@ -226,7 +242,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -234,7 +250,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		CCC00000 /* Build configuration list for PBXProject */ = {
+		CCC00000 /* Build configuration list for PBXProject "VietBridge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				CCC00001 /* Debug */,
@@ -243,7 +259,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		CCC00002 /* Build configuration list for PBXNativeTarget */ = {
+		CCC00002 /* Build configuration list for PBXNativeTarget "VietBridge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				CCC00004 /* Debug */,
@@ -253,7 +269,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = EEE00000 /* Project object */;
 }
