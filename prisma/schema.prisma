@@ -7,8 +7,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 // ============================================================================
@@ -16,10 +16,18 @@ datasource db {
 // ============================================================================
 
 enum PlanType {
-  FREE
-  PRO
+  FREE        // 免登录用户
+  BASIC       // 登录用户
+  PRO         // VIP 用户
   ENTERPRISE
   API
+}
+
+enum UserType {
+  ANONYMOUS   // 匿名用户（未登录）
+  REGISTERED  // 注册用户
+  VIP         // VIP 用户
+  ADMIN       // 管理员
 }
 
 enum TaskType {
@@ -52,11 +60,20 @@ model User {
   emailVerified  DateTime?
   hashedPassword String?
   image          String?
+  manusUserId    String?   @unique
+  manusToken     String?
+  userType       UserType  @default(ANONYMOUS)
   role           String    @default("user")
+  dailyQuota     Int       @default(10)
+  monthlyQuota   Int       @default(100)
+  dailyUsed      Int       @default(0)
+  monthlyUsed    Int       @default(0)
+  lastResetDay   DateTime  @default(now())
   totalCalls     Int       @default(0)
   userLevel      Int       @default(1)
   banned         Boolean   @default(false)
   createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   accounts      Account[]
   sessions      Session[]
@@ -67,6 +84,8 @@ model User {
   apiKeys       ApiKey[]
 
   @@index([email])
+  @@index([manusUserId])
+  @@index([userType])
   @@index([userLevel])
 }
 
@@ -76,12 +95,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -156,7 +175,7 @@ model Message {
   id               String   @id @default(cuid())
   conversationId   String
   role             String   // "user" | "assistant"
-  content          String   @db.Text
+  content          String  
   metadata         Json?
   modelUsed        String?
   tokensPrompt     Int?
@@ -206,8 +225,8 @@ model KnowledgeEntry {
   id           String  @id @default(cuid())
   category     String
   key          String
-  valueZh      String  @db.Text
-  valueVi      String  @db.Text
+  valueZh      String 
+  valueVi      String 
   numericValue Float?
   rangeMin     Float?
   rangeMax     Float?
@@ -228,7 +247,7 @@ model KnowledgeEntry {
 model RiskRule {
   id             String  @id @default(cuid())
   name           String  @default("")
-  rule           String  @db.Text
+  rule           String 
   category       String
   weight         Int
   severity       String
@@ -251,7 +270,7 @@ model Course {
   chinese         String
   vietnamese      String
   pronunciation   String    @default("")
-  culturalNote    String    @db.Text @default("")
+  culturalNote    String    @default("")
   exampleSentence String    @default("")
   difficulty      String    @default("beginner") // beginner | intermediate | advanced
   isDaily         Boolean   @default(false)
@@ -273,7 +292,7 @@ model ScenePhrase {
   vi        String
   zh        String
   pinyin    String   @default("")
-  culture   String   @db.Text @default("")
+  culture   String   @default("")
   active    Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
@@ -292,10 +311,10 @@ model PromptVersion {
   task              TaskType  @default(TRANSLATION)
   scene             SceneType @default(GENERAL)
   version           String
-  systemPrompt      String    @db.Text
-  taskPrompt        String    @db.Text
-  scenePrompt       String    @db.Text
-  changes           String    @db.Text
+  systemPrompt      String   
+  taskPrompt        String   
+  scenePrompt       String   
+  changes           String   
   status            String    @default("archived")
   abGroup           String?
   accuracyScore     Float?
@@ -341,9 +360,9 @@ model LlmLog {
   taskType         TaskType
   sceneType        SceneType @default(GENERAL)
   modelUsed        String
-  input            String    @db.Text
-  promptLayers     String    @db.Text
-  output           String    @db.Text
+  input            String   
+  promptLayers     String   
+  output           String   
   tokensPrompt     Int
   tokensCompletion Int
   cost             Float
@@ -392,8 +411,8 @@ model ApiKey {
 model AdminRole {
   id          String   @id @default(cuid())
   name        String   @unique
-  permissions String[]
-  userIds     String[]
+  permissions String
+  userIds     String
 }
 
 // ============================================================================

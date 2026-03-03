@@ -297,28 +297,28 @@ async function main() {
   // ── 6. Admin RBAC Roles ───────────────────────────────────────────────────
   const roles = [
     {
-      id: "seed_role_super",
+      id: "seed_role_admin",
       name: "super_admin",
-      permissions: ["all"],
-      userIds: [admin.id],
+      permissions: JSON.stringify(["all"]),
+      userIds: JSON.stringify([admin.id]),
     },
     {
       id: "seed_role_ops",
       name: "ops",
-      permissions: ["dashboard", "logs", "users", "knowledge"],
-      userIds: [],
+      permissions: JSON.stringify(["dashboard", "logs", "users", "knowledge"]),
+      userIds: JSON.stringify([]),
     },
     {
       id: "seed_role_prompt",
       name: "prompt_engineer",
-      permissions: ["dashboard", "prompts", "router", "logs"],
-      userIds: [],
+      permissions: JSON.stringify(["dashboard", "prompts", "router", "logs"]),
+      userIds: JSON.stringify([]),
     },
     {
       id: "seed_role_viewer",
       name: "viewer",
-      permissions: ["dashboard"],
-      userIds: [],
+      permissions: JSON.stringify(["dashboard"]),
+      userIds: JSON.stringify([]),
     },
   ];
 
